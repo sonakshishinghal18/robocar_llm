@@ -3,8 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Robocar Controller</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -13,15 +11,51 @@
     background: #0a0a0f; color: #fff;
     min-height: 100vh;
     display: flex; flex-direction: column; align-items: center;
-    padding: 20px 16px 40px; user-select: none;
+    padding: 0 0 40px; user-select: none;
   }
-  h1 { font-size: 20px; font-weight: 600; margin-bottom: 16px; }
 
+  /* Camera feed */
+  .camera-section {
+    width: 100%; max-width: 800px;
+    background: #111; position: relative;
+    aspect-ratio: 16/9;
+  }
+  #remote-video {
+    width: 100%; height: 100%;
+    object-fit: cover; background: #000;
+  }
+  .camera-overlay {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between;
+    align-items: center; padding: 10px 14px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+  }
+  .cam-status { font-size: 12px; color: #30d158; font-weight: 600; }
+  .connect-cam-btn {
+    font-size: 12px; font-weight: 600; padding: 5px 12px;
+    background: #1c86f5; color: #fff; border: none;
+    border-radius: 20px; cursor: pointer;
+  }
+  .no-feed {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    color: #48484a; font-size: 13px;
+  }
+  .no-feed svg { width: 40px; height: 40px; stroke: #2a2a3a; fill: none; stroke-width: 1.5; }
+
+  .controls-wrap {
+    width: 100%; max-width: 400px;
+    padding: 16px 16px 0;
+    display: flex; flex-direction: column; align-items: center; gap: 0;
+  }
+
+  /* IP bar */
   .config-bar {
     display: flex; align-items: center; gap: 8px;
     background: #1a1a24; border: 1px solid #2a2a38;
-    border-radius: 14px; padding: 10px 14px;
-    width: 100%; max-width: 360px; margin-bottom: 20px;
+    border-radius: 14px; padding: 8px 14px;
+    width: 100%; margin-bottom: 16px;
   }
   .config-bar input {
     flex: 1; background: transparent; border: none; outline: none;
@@ -33,36 +67,36 @@
     background: #1c86f5; color: #fff; border: none;
     border-radius: 20px; cursor: pointer;
   }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; transition: background 0.3s; }
-  .dot.online { background: #30d158; box-shadow: 0 0 5px #30d15880; }
-  .dot.error  { background: #ff453a; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #30d158; flex-shrink: 0; }
 
+  /* D-pad */
   .dpad {
     display: grid;
-    grid-template-columns: repeat(3, 88px);
-    grid-template-rows: repeat(3, 88px);
-    gap: 10px; margin-bottom: 24px;
+    grid-template-columns: repeat(3, 80px);
+    grid-template-rows: repeat(3, 80px);
+    gap: 8px; margin-bottom: 20px;
   }
   .dpad-btn {
-    width: 88px; height: 88px; border-radius: 20px;
+    width: 80px; height: 80px; border-radius: 18px;
     border: 1px solid #2a2a3a; background: #1a1a26;
     display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 5px;
+    align-items: center; justify-content: center; gap: 4px;
     cursor: pointer; touch-action: manipulation;
     transition: background 0.08s, transform 0.06s;
   }
-  .dpad-btn svg { width: 28px; height: 28px; stroke: #1c86f5; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-  .dpad-btn span { font-size: 11px; color: #636370; }
+  .dpad-btn svg { width: 24px; height: 24px; stroke: #1c86f5; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .dpad-btn span { font-size: 10px; color: #636370; }
   .dpad-btn.pressed { background: #1c3a6a; border-color: #1c86f5; transform: scale(0.92); }
-  .cell-empty { width: 88px; height: 88px; }
+  .cell-empty { width: 80px; height: 80px; }
 
+  /* Joystick */
   .joystick-wrap {
-    width: 190px; height: 190px; border-radius: 50%;
+    width: 170px; height: 170px; border-radius: 50%;
     background: #1a1a26; border: 1px solid #2a2a3a;
     position: relative; touch-action: none; margin-bottom: 10px;
   }
   .joystick-knob {
-    width: 68px; height: 68px; border-radius: 50%;
+    width: 60px; height: 60px; border-radius: 50%;
     background: #1c86f5; position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
@@ -70,16 +104,17 @@
   }
   .joystick-knob.active { background: #50a0ff; }
   .zone-label { position: absolute; font-size: 10px; color: #2a2a4a; font-weight: 600; }
-  .zone-label.top    { top: 12px;    left: 50%; transform: translateX(-50%); }
-  .zone-label.bottom { bottom: 12px; left: 50%; transform: translateX(-50%); }
-  .zone-label.left   { left: 12px;   top: 50%;  transform: translateY(-50%); }
-  .zone-label.right  { right: 12px;  top: 50%;  transform: translateY(-50%); }
-  .cmd-display { font-size: 12px; color: #48484a; min-height: 16px; margin-bottom: 20px; }
+  .zone-label.top    { top: 10px;    left: 50%; transform: translateX(-50%); }
+  .zone-label.bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
+  .zone-label.left   { left: 10px;   top: 50%;  transform: translateY(-50%); }
+  .zone-label.right  { right: 10px;  top: 50%;  transform: translateY(-50%); }
+  .cmd-display { font-size: 12px; color: #48484a; min-height: 16px; margin-bottom: 16px; }
 
+  /* LLM */
   .llm-section {
-    width: 100%; max-width: 360px;
+    width: 100%;
     background: #1a1a24; border: 1px solid #2a2a38;
-    border-radius: 18px; padding: 14px; margin-bottom: 16px;
+    border-radius: 18px; padding: 14px; margin-bottom: 12px;
   }
   .llm-label { font-size: 11px; font-weight: 600; color: #636370; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
   .llm-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -104,7 +139,6 @@
     background: #1c3a6a; border: 1px solid #1c86f5;
     border-radius: 10px; color: #60a8ff;
     font-size: 14px; font-weight: 600; cursor: pointer;
-    touch-action: manipulation;
   }
   .send-btn:active { background: #1c86f5; color: #fff; }
   .send-btn:disabled { opacity: 0.4; pointer-events: none; }
@@ -117,71 +151,86 @@
 </head>
 <body>
 
-<h1>🤖 Robocar</h1>
-
-<div class="config-bar">
-  <div class="dot online" id="dot"></div>
-  <input type="text" id="ip-input" placeholder="192.168.x.x" value="192.168.0.101">
-  <button class="save-btn" onclick="saveIP()">Set IP</button>
-</div>
-
-<div class="dpad">
-  <div class="cell-empty"></div>
-  <button class="dpad-btn" id="btn-F">
-    <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
-    <span>Forward</span>
-  </button>
-  <div class="cell-empty"></div>
-
-  <button class="dpad-btn" id="btn-L">
-    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-    <span>Left</span>
-  </button>
-  <button class="dpad-btn" id="btn-S" style="border-color:#3a2a2a">
-    <svg viewBox="0 0 24 24" style="stroke:#ff453a"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-    <span>Stop</span>
-  </button>
-  <button class="dpad-btn" id="btn-R">
-    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-    <span>Right</span>
-  </button>
-
-  <div class="cell-empty"></div>
-  <button class="dpad-btn" id="btn-B">
-    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-    <span>Back</span>
-  </button>
-  <div class="cell-empty"></div>
-</div>
-
-<div class="joystick-wrap" id="joystick">
-  <span class="zone-label top">F</span>
-  <span class="zone-label bottom">B</span>
-  <span class="zone-label left">L</span>
-  <span class="zone-label right">R</span>
-  <div class="joystick-knob" id="knob"></div>
-</div>
-<div class="cmd-display" id="cmd-display">—</div>
-
-<div class="llm-section">
-  <div class="llm-label">AI Command</div>
-  <div class="llm-input-row">
-    <input class="llm-input" type="text" id="llm-input" placeholder="Go forward 2s, turn left, stop…">
-    <button class="mic-btn" id="mic-btn" onclick="toggleMic()">
-      <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
-    </button>
+<!-- Camera feed -->
+<div class="camera-section">
+  <video id="remote-video" autoplay playsinline></video>
+  <div class="no-feed" id="no-feed">
+    <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+    Camera not connected
   </div>
-  <button class="send-btn" id="send-btn" onclick="runLLM()">Ask AI to drive</button>
-  <div class="llm-status" id="llm-status"></div>
-  <div id="cmd-plan" style="margin-top:8px; font-size:11px; color:#636370; line-height:1.7; white-space:pre;"></div>
+  <div class="camera-overlay">
+    <span class="cam-status" id="cam-status">No camera</span>
+    <button class="connect-cam-btn" id="connect-cam-btn" onclick="connectCamera()">Connect Camera</button>
+  </div>
 </div>
 
-<div class="log" id="log"></div>
+<div class="controls-wrap">
 
+  <div class="config-bar" style="margin-top:16px">
+    <div class="dot"></div>
+    <input type="text" id="ip-input" placeholder="192.168.x.x" value="192.168.0.101">
+    <button class="save-btn" onclick="saveIP()">Set IP</button>
+  </div>
+
+  <div class="dpad">
+    <div class="cell-empty"></div>
+    <button class="dpad-btn" id="btn-F">
+      <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+      <span>Forward</span>
+    </button>
+    <div class="cell-empty"></div>
+    <button class="dpad-btn" id="btn-L">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      <span>Left</span>
+    </button>
+    <button class="dpad-btn" id="btn-S" style="border-color:#3a2a2a">
+      <svg viewBox="0 0 24 24" style="stroke:#ff453a"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <span>Stop</span>
+    </button>
+    <button class="dpad-btn" id="btn-R">
+      <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+      <span>Right</span>
+    </button>
+    <div class="cell-empty"></div>
+    <button class="dpad-btn" id="btn-B">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      <span>Back</span>
+    </button>
+    <div class="cell-empty"></div>
+  </div>
+
+  <div class="joystick-wrap" id="joystick">
+    <span class="zone-label top">F</span>
+    <span class="zone-label bottom">B</span>
+    <span class="zone-label left">L</span>
+    <span class="zone-label right">R</span>
+    <div class="joystick-knob" id="knob"></div>
+  </div>
+  <div class="cmd-display" id="cmd-display">—</div>
+
+  <div class="llm-section">
+    <div class="llm-label">AI Command</div>
+    <div class="llm-input-row">
+      <input class="llm-input" type="text" id="llm-input" placeholder="Go forward 2s, turn left, stop…">
+      <button class="mic-btn" id="mic-btn" onclick="toggleMic()">
+        <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+      </button>
+    </div>
+    <button class="send-btn" id="send-btn" onclick="runLLM()">Ask AI to drive</button>
+    <div class="llm-status" id="llm-status"></div>
+    <div id="cmd-plan" style="margin-top:8px; font-size:11px; color:#636370; line-height:1.7; white-space:pre;"></div>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.1/peerjs.min.js"></script>
 <script>
 const BACKEND = 'https://robocar-llm.onrender.com';
+const PEER_ID = 'robocar-camera-stream-001';
 let robotIP = localStorage.getItem('robotIP') || '192.168.0.101';
 document.getElementById('ip-input').value = robotIP;
+let peer = null;
 
 function saveIP() {
   robotIP = document.getElementById('ip-input').value.trim();
@@ -191,23 +240,51 @@ function saveIP() {
 
 function setLog(msg) { document.getElementById('log').textContent = msg; }
 
-// Direct to ESP32
+// Camera via WebRTC PeerJS
+function connectCamera() {
+  const btn = document.getElementById('connect-cam-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  document.getElementById('cam-status').textContent = 'Connecting…';
+
+  peer = new Peer({
+    host: 'peerjs.com', port: 443, path: '/', secure: true
+  });
+
+  peer.on('open', id => {
+    const call = peer.call(PEER_ID, null);
+    call.on('stream', remoteStream => {
+      const video = document.getElementById('remote-video');
+      video.srcObject = remoteStream;
+      document.getElementById('no-feed').style.display = 'none';
+      document.getElementById('cam-status').textContent = '📡 Live';
+      btn.textContent = 'Connected';
+    });
+    call.on('error', e => {
+      document.getElementById('cam-status').textContent = 'Stream error';
+      btn.disabled = false; btn.textContent = 'Retry';
+    });
+  });
+
+  peer.on('error', err => {
+    document.getElementById('cam-status').textContent = 'Error — is iPhone streaming?';
+    btn.disabled = false; btn.textContent = 'Connect Camera';
+  });
+}
+
+// Motor commands
 async function sendCmd(cmd) {
   try {
     await fetch(`http://${robotIP}/cmd?v=${cmd}`);
     const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
     setLog('→ ' + labels[cmd]);
-  } catch(e) {
-    setLog('Error: ' + e.message);
-  }
+  } catch(e) { setLog('Error: ' + e.message); }
 }
 
-// D-pad press and hold (L/R swapped)
+// D-pad
 const dirBtns = [
-  { id: 'btn-F', cmd: 'F' },
-  { id: 'btn-B', cmd: 'B' },
-  { id: 'btn-L', cmd: 'R' },
-  { id: 'btn-R', cmd: 'L' },
+  { id: 'btn-F', cmd: 'F' }, { id: 'btn-B', cmd: 'B' },
+  { id: 'btn-L', cmd: 'R' }, { id: 'btn-R', cmd: 'L' },
 ];
 let lastCmd = null;
 dirBtns.forEach(({ id, cmd }) => {
@@ -227,7 +304,7 @@ document.getElementById('btn-S').addEventListener('click', () => { lastCmd=null;
 const joystick = document.getElementById('joystick');
 const knob = document.getElementById('knob');
 const cmdDisp = document.getElementById('cmd-display');
-const DEADZONE = 28;
+const DEADZONE = 25;
 let joyActive = false;
 
 function getJoyCmd(dx, dy) {
@@ -236,7 +313,7 @@ function getJoyCmd(dx, dy) {
   return dy > 0 ? 'B' : 'F';
 }
 function moveKnob(dx, dy) {
-  const max = 61, dist = Math.sqrt(dx*dx+dy*dy), a = Math.atan2(dy,dx);
+  const max = 55, dist = Math.sqrt(dx*dx+dy*dy), a = Math.atan2(dy,dx);
   const c = Math.min(dist, max);
   knob.style.transform = `translate(calc(-50% + ${Math.cos(a)*c}px), calc(-50% + ${Math.sin(a)*c}px))`;
 }
@@ -290,12 +367,10 @@ async function runLLM() {
   const status = document.getElementById('llm-status');
   const plan   = document.getElementById('cmd-plan');
   if (!prompt) return;
-
   document.getElementById('send-btn').disabled = true;
   status.textContent = 'Thinking…';
   status.className = 'llm-status running';
   plan.textContent = '';
-
   try {
     const res = await fetch(BACKEND + '/drive', {
       method: 'POST',
@@ -306,12 +381,10 @@ async function runLLM() {
     const raw = data.result || '';
     const clean = raw.replace(/```json|```/g, '').trim();
     const cmds = JSON.parse(clean);
-
     const labelMap = { F:'⬆ Forward', B:'⬇ Backward', L:'⬅ Left', R:'➡ Right', S:'⏹ Stop' };
     const lines = cmds.map((s, i) => `${i+1}. ${labelMap[s.cmd]} (${s.duration}ms)`);
     plan.textContent = lines.join('\n');
     status.textContent = 'Executing…';
-
     for (let i = 0; i < cmds.length; i++) {
       const updated = lines.map((l, j) => j === i ? '▶ ' + l.slice(2) : l);
       plan.textContent = updated.join('\n');
@@ -329,10 +402,7 @@ async function runLLM() {
   }
   document.getElementById('send-btn').disabled = false;
 }
-
-document.getElementById('llm-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') runLLM();
-});
+document.getElementById('llm-input').addEventListener('keydown', e => { if (e.key === 'Enter') runLLM(); });
 </script>
 </body>
 </html>
