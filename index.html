@@ -224,13 +224,14 @@
   <div class="log" id="log"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.1/peerjs.min.js"></script>
 <script>
 const BACKEND = 'https://robocar-llm.onrender.com';
-const PEER_ID = 'robocar-camera-stream-001';
+const SIGNAL_URL = 'wss://robocar-llm.onrender.com/signal';
+const MAC_ID = 'robocar-mac-' + Math.random().toString(36).substr(2,6);
+const CAM_ID = 'robocar-cam';
 let robotIP = localStorage.getItem('robotIP') || '192.168.0.101';
 document.getElementById('ip-input').value = robotIP;
-let peer = null;
+let ws = null, pc = null;
 
 function saveIP() {
   robotIP = document.getElementById('ip-input').value.trim();
@@ -240,36 +241,62 @@ function saveIP() {
 
 function setLog(msg) { document.getElementById('log').textContent = msg; }
 
-// Camera via WebRTC PeerJS
 function connectCamera() {
   const btn = document.getElementById('connect-cam-btn');
   btn.disabled = true;
   btn.textContent = 'Connecting…';
   document.getElementById('cam-status').textContent = 'Connecting…';
 
-  peer = new Peer({
-    host: 'peerjs.com', port: 443, path: '/', secure: true
-  });
+  ws = new WebSocket(SIGNAL_URL);
 
-  peer.on('open', id => {
-    const call = peer.call(PEER_ID, null);
-    call.on('stream', remoteStream => {
-      const video = document.getElementById('remote-video');
-      video.srcObject = remoteStream;
-      document.getElementById('no-feed').style.display = 'none';
-      document.getElementById('cam-status').textContent = '📡 Live';
-      btn.textContent = 'Connected';
-    });
-    call.on('error', e => {
-      document.getElementById('cam-status').textContent = 'Stream error';
-      btn.disabled = false; btn.textContent = 'Retry';
-    });
-  });
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'register', id: MAC_ID }));
+  };
 
-  peer.on('error', err => {
+  ws.onmessage = async (evt) => {
+    const msg = JSON.parse(evt.data);
+
+    if (msg.type === 'registered') {
+      // Start WebRTC offer to camera
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+      pc.ontrack = e => {
+        const video = document.getElementById('remote-video');
+        video.srcObject = e.streams[0];
+        document.getElementById('no-feed').style.display = 'none';
+        document.getElementById('cam-status').textContent = '📡 Live';
+        btn.textContent = 'Connected';
+      };
+
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          ws.send(JSON.stringify({
+            type: 'signal', target: CAM_ID,
+            data: { type: 'candidate', candidate: e.candidate }
+          }));
+        }
+      };
+
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      ws.send(JSON.stringify({ type: 'signal', target: CAM_ID, data: offer }));
+    }
+
+    if (msg.type === 'signal') {
+      const data = msg.data;
+      if (data.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+      } else if (data.type === 'candidate' && pc) {
+        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
+    }
+  };
+
+  ws.onerror = () => {
     document.getElementById('cam-status').textContent = 'Error — is iPhone streaming?';
     btn.disabled = false; btn.textContent = 'Connect Camera';
-  });
+  };
 }
 
 // Motor commands
