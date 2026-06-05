@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Robocar Controller</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    background: #0a0a0f; color: #fff;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 16px 40px;
+    user-select: none;
+  }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 16px; }
+
+  /* IP config */
+  .config-bar {
+    display: flex; align-items: center; gap: 8px;
+    background: #1a1a24; border: 1px solid #2a2a38;
+    border-radius: 14px; padding: 10px 14px;
+    width: 100%; max-width: 360px; margin-bottom: 20px;
+  }
+  .config-bar input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: #fff; font-size: 13px; font-family: monospace;
+  }
+  .config-bar input::placeholder { color: #48484a; }
+  .save-btn {
+    font-size: 12px; font-weight: 600; padding: 5px 12px;
+    background: #1c86f5; color: #fff; border: none;
+    border-radius: 20px; cursor: pointer;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; transition: background 0.3s; }
+  .dot.online { background: #30d158; box-shadow: 0 0 5px #30d15880; }
+  .dot.error  { background: #ff453a; }
+
+  /* D-pad */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 88px);
+    grid-template-rows: repeat(3, 88px);
+    gap: 10px; margin-bottom: 24px;
+  }
+  .dpad-btn {
+    width: 88px; height: 88px; border-radius: 20px;
+    border: 1px solid #2a2a3a; background: #1a1a26;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 5px;
+    cursor: pointer; touch-action: manipulation;
+    transition: background 0.08s, border-color 0.08s, transform 0.06s;
+  }
+  .dpad-btn svg { width: 28px; height: 28px; stroke: #1c86f5; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .dpad-btn span { font-size: 11px; color: #636370; }
+  .dpad-btn.pressed { background: #1c3a6a; border-color: #1c86f5; transform: scale(0.92); }
+  .cell-empty { width: 88px; height: 88px; }
+
+  /* Joystick */
+  .joystick-wrap {
+    width: 190px; height: 190px; border-radius: 50%;
+    background: #1a1a26; border: 1px solid #2a2a3a;
+    position: relative; touch-action: none; margin-bottom: 10px;
+  }
+  .joystick-knob {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: #1c86f5; position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none; transition: background 0.1s;
+  }
+  .joystick-knob.active { background: #50a0ff; }
+  .zone-label { position: absolute; font-size: 10px; color: #2a2a4a; font-weight: 600; }
+  .zone-label.top    { top: 12px;    left: 50%; transform: translateX(-50%); }
+  .zone-label.bottom { bottom: 12px; left: 50%; transform: translateX(-50%); }
+  .zone-label.left   { left: 12px;   top: 50%;  transform: translateY(-50%); }
+  .zone-label.right  { right: 12px;  top: 50%;  transform: translateY(-50%); }
+  .cmd-display { font-size: 12px; color: #48484a; min-height: 16px; margin-bottom: 20px; }
+
+  /* LLM section */
+  .llm-section {
+    width: 100%; max-width: 360px;
+    background: #1a1a24; border: 1px solid #2a2a38;
+    border-radius: 18px; padding: 14px; margin-bottom: 16px;
+  }
+  .llm-label { font-size: 11px; font-weight: 600; color: #636370; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .llm-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .llm-input {
+    flex: 1; background: #0f0f1a; border: 1px solid #2a2a38;
+    border-radius: 10px; padding: 10px 12px;
+    color: #fff; font-size: 14px; outline: none;
+    font-family: -apple-system, sans-serif;
+  }
+  .llm-input::placeholder { color: #48484a; }
+  .mic-btn {
+    width: 42px; height: 42px; border-radius: 10px;
+    border: 1px solid #2a2a38; background: #0f0f1a;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; touch-action: manipulation;
+  }
+  .mic-btn svg { width: 20px; height: 20px; stroke: #1c86f5; fill: none; stroke-width: 2; stroke-linecap: round; }
+  .mic-btn.listening { background: #1a0f0f; border-color: #ff453a; }
+  .mic-btn.listening svg { stroke: #ff453a; animation: blink 0.6s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .send-btn {
+    width: 100%; padding: 11px;
+    background: #1c3a6a; border: 1px solid #1c86f5;
+    border-radius: 10px; color: #60a8ff;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    touch-action: manipulation; transition: background 0.1s;
+  }
+  .send-btn:active { background: #1c86f5; color: #fff; }
+  .send-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+  .api-key-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  }
+  .api-key-row input {
+    flex: 1; background: #0f0f1a; border: 1px solid #2a2a38;
+    border-radius: 8px; padding: 7px 10px;
+    color: #8e8e93; font-size: 12px; outline: none;
+    font-family: monospace;
+  }
+  .api-key-row input::placeholder { color: #3a3a4a; }
+  .api-key-label { font-size: 11px; color: #48484a; white-space: nowrap; }
+
+  .llm-status { font-size: 12px; color: #48484a; margin-top: 8px; min-height: 16px; }
+  .llm-status.running { color: #ffd60a; }
+  .llm-status.done    { color: #30d158; }
+  .llm-status.error   { color: #ff453a; }
+
+  .log { font-size: 12px; color: #48484a; text-align: center; min-height: 16px; }
+</style>
+</head>
+<body>
+
+<h1>🤖 Robocar</h1>
+
+<!-- IP Config -->
+<div class="config-bar">
+  <div class="dot" id="dot"></div>
+  <input type="text" id="ip-input" placeholder="192.168.x.x" value="">
+  <button class="save-btn" onclick="saveIP()">Connect</button>
+</div>
+
+<!-- D-pad -->
+<div class="dpad">
+  <div class="cell-empty"></div>
+  <button class="dpad-btn" id="btn-F">
+    <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+    <span>Forward</span>
+  </button>
+  <div class="cell-empty"></div>
+
+  <button class="dpad-btn" id="btn-L">
+    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    <span>Left</span>
+  </button>
+  <button class="dpad-btn" id="btn-S" style="border-color:#3a2a2a">
+    <svg viewBox="0 0 24 24" style="stroke:#ff453a"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    <span>Stop</span>
+  </button>
+  <button class="dpad-btn" id="btn-R">
+    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+    <span>Right</span>
+  </button>
+
+  <div class="cell-empty"></div>
+  <button class="dpad-btn" id="btn-B">
+    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+    <span>Back</span>
+  </button>
+  <div class="cell-empty"></div>
+</div>
+
+<!-- Joystick -->
+<div class="joystick-wrap" id="joystick">
+  <span class="zone-label top">F</span>
+  <span class="zone-label bottom">B</span>
+  <span class="zone-label left">L</span>
+  <span class="zone-label right">R</span>
+  <div class="joystick-knob" id="knob"></div>
+</div>
+<div class="cmd-display" id="cmd-display">—</div>
+
+<!-- LLM Section -->
+<div class="llm-section">
+  <div class="llm-label">AI Command</div>
+  <div class="llm-input-row">
+    <input class="llm-input" type="text" id="llm-input" placeholder="Go forward 2s, turn left, stop…">
+    <button class="mic-btn" id="mic-btn" onclick="toggleMic()">
+      <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+    </button>
+  </div>
+  <button class="send-btn" id="send-btn" onclick="runLLM()">Ask AI to drive</button>
+  <div class="api-key-row">
+    <span class="api-key-label">API URL</span>
+    <input type="text" id="api-key" placeholder="https://robocar-api.onrender.com">
+  </div>
+  <div class="llm-status" id="llm-status"></div>
+</div>
+
+<div class="log" id="log"></div>
+
+<script>
+let robotIP = localStorage.getItem('robotIP') || '';
+if (robotIP) document.getElementById('ip-input').value = robotIP;
+
+function saveIP() {
+  robotIP = document.getElementById('ip-input').value.trim();
+  localStorage.setItem('robotIP', robotIP);
+  pingRobot();
+}
+
+async function pingRobot() {
+  const dot = document.getElementById('dot');
+  dot.className = 'dot';
+  try {
+    const r = await fetch(`http://${robotIP}/`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) { dot.className = 'dot online'; setLog('Connected to Robocar'); }
+    else { dot.className = 'dot error'; }
+  } catch { dot.className = 'dot error'; setLog('Cannot reach ' + robotIP); }
+}
+
+if (robotIP) pingRobot();
+
+function setLog(msg) { document.getElementById('log').textContent = msg; }
+
+async function sendCmd(cmd) {
+  if (!robotIP) { setLog('Set robot IP first'); return; }
+  try {
+    await fetch(`http://${robotIP}/cmd?v=${cmd}`);
+    const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
+    setLog('→ ' + labels[cmd]);
+  } catch(e) {
+    setLog('Error: ' + e.message);
+  }
+}
+
+// D-pad press and hold (L/R swapped to fix direction)
+const dirBtns = [
+  { id: 'btn-F', cmd: 'F' },
+  { id: 'btn-B', cmd: 'B' },
+  { id: 'btn-L', cmd: 'R' },
+  { id: 'btn-R', cmd: 'L' },
+];
+let lastCmd = null;
+dirBtns.forEach(({ id, cmd }) => {
+  const btn = document.getElementById(id);
+  function onPress(e) { e.preventDefault(); btn.classList.add('pressed'); if(lastCmd!==cmd){lastCmd=cmd;sendCmd(cmd);} }
+  function onRelease(e) { e.preventDefault(); btn.classList.remove('pressed'); lastCmd=null; sendCmd('S'); }
+  btn.addEventListener('touchstart',  onPress,   { passive: false });
+  btn.addEventListener('touchend',    onRelease, { passive: false });
+  btn.addEventListener('touchcancel', onRelease, { passive: false });
+  btn.addEventListener('mousedown',   onPress);
+  btn.addEventListener('mouseup',     onRelease);
+  btn.addEventListener('mouseleave',  onRelease);
+});
+document.getElementById('btn-S').addEventListener('click', () => { lastCmd=null; sendCmd('S'); });
+
+// Joystick
+const joystick = document.getElementById('joystick');
+const knob = document.getElementById('knob');
+const cmdDisp = document.getElementById('cmd-display');
+const DEADZONE = 28;
+let joyActive = false, joyOrigin = { x:0, y:0 };
+
+function getJoyCmd(dx, dy) {
+  if (Math.sqrt(dx*dx+dy*dy) < DEADZONE) return 'S';
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'L' : 'R'; // swapped
+  return dy > 0 ? 'B' : 'F';
+}
+function moveKnob(dx, dy) {
+  const max = 61, dist = Math.sqrt(dx*dx+dy*dy), a = Math.atan2(dy,dx);
+  const c = Math.min(dist, max);
+  knob.style.transform = `translate(calc(-50% + ${Math.cos(a)*c}px), calc(-50% + ${Math.sin(a)*c}px))`;
+}
+function resetKnob() {
+  knob.style.transform = 'translate(-50%,-50%)';
+  knob.classList.remove('active');
+  cmdDisp.textContent = '—';
+  lastCmd = null; sendCmd('S');
+}
+function joyMove(cx, cy) {
+  const rect = joystick.getBoundingClientRect();
+  const dx = cx - (rect.left + rect.width/2);
+  const dy = cy - (rect.top + rect.height/2);
+  moveKnob(dx, dy);
+  const cmd = getJoyCmd(dx, dy);
+  cmdDisp.textContent = {F:'Forward',B:'Backward',L:'Left',R:'Right',S:'Idle'}[cmd];
+  if (lastCmd !== cmd) { lastCmd = cmd; sendCmd(cmd); }
+}
+joystick.addEventListener('touchstart', e => { e.preventDefault(); joyActive=true; knob.classList.add('active'); joyMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+joystick.addEventListener('touchmove',  e => { e.preventDefault(); if(joyActive) joyMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+joystick.addEventListener('touchend',   () => { joyActive=false; resetKnob(); });
+joystick.addEventListener('touchcancel',() => { joyActive=false; resetKnob(); });
+joystick.addEventListener('mousedown',  e => { joyActive=true; knob.classList.add('active'); joyMove(e.clientX,e.clientY); });
+window.addEventListener('mousemove',    e => { if(joyActive) joyMove(e.clientX,e.clientY); });
+window.addEventListener('mouseup',      () => { if(joyActive){joyActive=false;resetKnob();} });
+
+// Mic
+let recognition = null, listening = false;
+function toggleMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setLog('Mic not supported'); return; }
+  if (listening) { recognition && recognition.stop(); return; }
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.onstart = () => { listening=true; document.getElementById('mic-btn').classList.add('listening'); };
+  recognition.onend   = () => { listening=false; document.getElementById('mic-btn').classList.remove('listening'); };
+  recognition.onresult = e => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('llm-input').value = text;
+    runLLM();
+  };
+  recognition.onerror = e => setLog('Mic: ' + e.error);
+  recognition.start();
+}
+
+// LLM
+async function runLLM() {
+  const prompt = document.getElementById('llm-input').value.trim();
+  const apiKey = document.getElementById('api-key').value.trim();
+  const status = document.getElementById('llm-status');
+
+  if (!prompt) return;
+  if (!apiKey) { status.textContent = 'Enter backend URL'; status.className = 'llm-status error'; return; }
+  if (!robotIP) { status.textContent = 'Set robot IP first'; status.className = 'llm-status error'; return; }
+
+  document.getElementById('send-btn').disabled = true;
+  status.textContent = 'Thinking…';
+  status.className = 'llm-status running';
+
+  try {
+    const backendURL = apiKey.replace(/\/$/, '');
+    const res = await fetch(backendURL + '/drive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: prompt })
+    });
+    const data = await res.json();
+    const raw = data.result || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const cmds = JSON.parse(clean);
+
+    status.textContent = `Running ${cmds.length} steps…`;
+    status.className = 'llm-status running';
+
+    for (const step of cmds) {
+      await sendCmd(step.cmd);
+      await new Promise(r => setTimeout(r, step.duration));
+    }
+    await sendCmd('S');
+    status.textContent = 'Done!';
+    status.className = 'llm-status done';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'llm-status error';
+  }
+  document.getElementById('send-btn').disabled = false;
+}
+
+document.getElementById('llm-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runLLM();
+});
+</script>
+</body>
+</html>
