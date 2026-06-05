@@ -198,6 +198,7 @@
   <button class="send-btn" id="send-btn" onclick="runLLM()">Ask AI to drive</button>
 
   <div class="llm-status" id="llm-status"></div>
+  <div id="cmd-plan" style="margin-top:8px; font-size:11px; color:#636370; line-height:1.7;"></div>
 </div>
 
 <div class="log" id="log"></div>
@@ -216,9 +217,9 @@ async function pingRobot() {
   const dot = document.getElementById('dot');
   dot.className = 'dot';
   try {
-    const r = await fetch(`http://${robotIP}/`, { signal: AbortSignal.timeout(3000) });
+    const r = await fetch(`https://robocar-llm.onrender.com/ping?ip=${robotIP}`, { signal: AbortSignal.timeout(6000) });
     if (r.ok) { dot.className = 'dot online'; setLog('Connected to Robocar'); }
-    else { dot.className = 'dot error'; }
+    else { dot.className = 'dot error'; setLog('Cannot reach ' + robotIP); }
   } catch { dot.className = 'dot error'; setLog('Cannot reach ' + robotIP); }
 }
 
@@ -229,7 +230,7 @@ function setLog(msg) { document.getElementById('log').textContent = msg; }
 async function sendCmd(cmd) {
   if (!robotIP) { setLog('Set robot IP first'); return; }
   try {
-    await fetch(`http://${robotIP}/cmd?v=${cmd}`);
+    await fetch(`https://robocar-llm.onrender.com/relay?ip=${robotIP}&v=${cmd}`);
     const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
     setLog('→ ' + labels[cmd]);
   } catch(e) {
@@ -312,6 +313,7 @@ function toggleMic() {
   recognition.onresult = e => {
     const text = e.results[0][0].transcript;
     document.getElementById('llm-input').value = text;
+    setLog('🎤 Heard: "' + text + '"');
     runLLM();
   };
   recognition.onerror = e => setLog('Mic: ' + e.error);
@@ -343,15 +345,20 @@ async function runLLM() {
     const clean = raw.replace(/```json|```/g, '').trim();
     const cmds = JSON.parse(clean);
 
-    status.textContent = `Running ${cmds.length} steps…`;
+    const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
+    const summary = cmds.map(c => `${labels[c.cmd] || c.cmd} ${c.duration}ms`).join(' → ');
+    status.textContent = `📋 ${summary}`;
     status.className = 'llm-status running';
+    await new Promise(r => setTimeout(r, 800));
 
     for (const step of cmds) {
+      const label = labels[step.cmd] || step.cmd;
+      status.textContent = `▶ ${label}…`;
       await sendCmd(step.cmd);
       await new Promise(r => setTimeout(r, step.duration));
     }
     await sendCmd('S');
-    status.textContent = 'Done!';
+    status.textContent = '✅ Done!';
     status.className = 'llm-status done';
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
