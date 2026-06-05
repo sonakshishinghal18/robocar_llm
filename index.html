@@ -203,7 +203,7 @@
 <div class="log" id="log"></div>
 
 <script>
-let robotIP = localStorage.getItem('robotIP') || '';
+let robotIP = localStorage.getItem('robotIP') || '192.168.0.101';
 if (robotIP) document.getElementById('ip-input').value = robotIP;
 
 function saveIP() {
