@@ -299,10 +299,10 @@ function connectCamera() {
   };
 }
 
-// Motor commands
+// Motor commands via Render relay (bypasses mixed content block)
 async function sendCmd(cmd) {
   try {
-    await fetch(`http://${robotIP}/cmd?v=${cmd}`);
+    await fetch(`${BACKEND}/relay?ip=${robotIP}&v=${cmd}`);
     const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
     setLog('→ ' + labels[cmd]);
   } catch(e) { setLog('Error: ' + e.message); }
