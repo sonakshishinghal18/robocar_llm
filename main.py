@@ -5,7 +5,6 @@ from pydantic import BaseModel
 import httpx
 import os
 import json
-import uuid
 from typing import Dict
 
 app = FastAPI()
@@ -29,12 +28,22 @@ Example: [{"cmd":"F","duration":2000},{"cmd":"L","duration":600},{"cmd":"S","dur
 class Prompt(BaseModel):
     text: str
 
-# WebSocket signaling for WebRTC
+# WebSocket signaling for WebRTC camera
 connected_peers: Dict[str, WebSocket] = {}
 
 @app.get("/")
 def root():
     return {"status": "Robocar API online"}
+
+@app.get("/relay")
+async def relay(ip: str, v: str):
+    """Relay motor command to ESP32 — allows HTTPS page to control HTTP device"""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            res = await client.get(f"http://{ip}/cmd?v={v}")
+            return Response(content=res.text, media_type="text/plain")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/drive")
 async def drive(p: Prompt):
@@ -65,12 +74,10 @@ async def websocket_signal(websocket: WebSocket):
         async for message in websocket.iter_text():
             data = json.loads(message)
             msg_type = data.get("type")
-
             if msg_type == "register":
                 peer_id = data.get("id")
                 connected_peers[peer_id] = websocket
                 await websocket.send_text(json.dumps({"type": "registered", "id": peer_id}))
-
             elif msg_type == "signal":
                 target_id = data.get("target")
                 if target_id in connected_peers:
@@ -79,7 +86,6 @@ async def websocket_signal(websocket: WebSocket):
                         "from": peer_id,
                         "data": data.get("data")
                     }))
-
     except WebSocketDisconnect:
         if peer_id and peer_id in connected_peers:
             del connected_peers[peer_id]
