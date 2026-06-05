@@ -196,10 +196,7 @@
     </button>
   </div>
   <button class="send-btn" id="send-btn" onclick="runLLM()">Ask AI to drive</button>
-  <div class="api-key-row">
-    <span class="api-key-label">API URL</span>
-    <input type="text" id="api-key" placeholder="https://robocar-api.onrender.com">
-  </div>
+
   <div class="llm-status" id="llm-status"></div>
 </div>
 
@@ -324,11 +321,10 @@ function toggleMic() {
 // LLM
 async function runLLM() {
   const prompt = document.getElementById('llm-input').value.trim();
-  const apiKey = document.getElementById('api-key').value.trim();
+  const apiKey = 'https://robocar-llm.onrender.com';
   const status = document.getElementById('llm-status');
 
   if (!prompt) return;
-  if (!apiKey) { status.textContent = 'Enter backend URL'; status.className = 'llm-status error'; return; }
   if (!robotIP) { status.textContent = 'Set robot IP first'; status.className = 'llm-status error'; return; }
 
   document.getElementById('send-btn').disabled = true;
