@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel
 import httpx
 import os
@@ -29,26 +28,6 @@ class Prompt(BaseModel):
 @app.get("/")
 def root():
     return {"status": "Robocar API online"}
-
-@app.get("/relay")
-async def relay(ip: str, v: str):
-    """Relay motor command to ESP32 — allows HTTPS page to control HTTP device"""
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            res = await client.get(f"http://{ip}/cmd?v={v}")
-            return Response(content=res.text, media_type="text/plain")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/ping")
-async def ping(ip: str):
-    """Check if ESP32 is reachable"""
-    try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            res = await client.get(f"http://{ip}/")
-            return {"status": "online", "response": res.text}
-    except Exception as e:
-        return {"status": "offline", "error": str(e)}
 
 @app.post("/drive")
 async def drive(p: Prompt):
