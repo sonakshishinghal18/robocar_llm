@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Robocar Camera</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000; color: #fff;
+    font-family: -apple-system, sans-serif;
+    height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  video {
+    width: 100vw; height: 100vh;
+    object-fit: cover; transform: scaleX(-1);
+  }
+  .overlay {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 16px; display: flex;
+    justify-content: space-between; align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+    z-index: 10;
+  }
+  .status { font-size: 13px; color: #30d158; font-weight: 600; }
+  .ip-display { font-size: 11px; color: #aeaeb2; font-family: monospace; }
+  .start-btn {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    background: #1c86f5; color: #fff; border: none;
+    padding: 14px 40px; border-radius: 30px;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div class="overlay">
+  <span class="status" id="status">Tap Start to stream</span>
+  <span class="ip-display" id="ip-display"></span>
+</div>
+<video id="video" autoplay playsinline muted></video>
+<button class="start-btn" id="start-btn" onclick="startCamera()">Start Camera</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.1/peerjs.min.js"></script>
+<script>
+let peer = null;
+let stream = null;
+const PEER_ID = 'robocar-camera-stream-001';
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    document.getElementById('video').srcObject = stream;
+    document.getElementById('video').style.transform = 'none';
+    document.getElementById('start-btn').style.display = 'none';
+    document.getElementById('status').textContent = 'Camera on — connecting…';
+
+    peer = new Peer(PEER_ID, {
+      host: 'peerjs.com', port: 443, path: '/', secure: true
+    });
+
+    peer.on('open', id => {
+      document.getElementById('status').textContent = '✅ Ready — waiting for Mac';
+      document.getElementById('ip-display').textContent = 'ID: ' + id;
+    });
+
+    peer.on('call', call => {
+      call.answer(stream);
+      document.getElementById('status').textContent = '📡 Streaming to Mac';
+    });
+
+    peer.on('error', err => {
+      document.getElementById('status').textContent = 'Error: ' + err.message;
+    });
+
+  } catch(e) {
+    document.getElementById('status').textContent = 'Camera error: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>
