@@ -186,12 +186,12 @@ document.getElementById('ip-input').value = robotIP;
 function saveIP() {
   robotIP = document.getElementById('ip-input').value.trim();
   localStorage.setItem('robotIP', robotIP);
-  setLog('IP updated to ' + robotIP);
+  setLog('IP set to ' + robotIP);
 }
 
 function setLog(msg) { document.getElementById('log').textContent = msg; }
 
-// Direct to ESP32 — buttons and joystick (fast, same WiFi)
+// Direct to ESP32
 async function sendCmd(cmd) {
   try {
     await fetch(`http://${robotIP}/cmd?v=${cmd}`);
@@ -202,18 +202,7 @@ async function sendCmd(cmd) {
   }
 }
 
-// Via Render — LLM commands only (needs HTTPS)
-async function sendCmdViaRelay(cmd) {
-  try {
-    await fetch(`${BACKEND}/relay?ip=${robotIP}&v=${cmd}`);
-    const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
-    setLog('→ ' + labels[cmd]);
-  } catch(e) {
-    setLog('Error: ' + e.message);
-  }
-}
-
-// D-pad press and hold — direct to ESP32 (L/R swapped)
+// D-pad press and hold (L/R swapped)
 const dirBtns = [
   { id: 'btn-F', cmd: 'F' },
   { id: 'btn-B', cmd: 'B' },
@@ -234,7 +223,7 @@ dirBtns.forEach(({ id, cmd }) => {
 });
 document.getElementById('btn-S').addEventListener('click', () => { lastCmd=null; sendCmd('S'); });
 
-// Joystick — direct to ESP32
+// Joystick
 const joystick = document.getElementById('joystick');
 const knob = document.getElementById('knob');
 const cmdDisp = document.getElementById('cmd-display');
@@ -274,7 +263,7 @@ joystick.addEventListener('mousedown',  e => { joyActive=true; knob.classList.ad
 window.addEventListener('mousemove',    e => { if(joyActive) joyMove(e.clientX,e.clientY); });
 window.addEventListener('mouseup',      () => { if(joyActive){joyActive=false;resetKnob();} });
 
-// Mic — Safari HTTPS only
+// Mic
 let recognition = null, listening = false;
 function toggleMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -295,7 +284,7 @@ function toggleMic() {
   recognition.start();
 }
 
-// LLM — via Render (HTTPS), then sends commands via relay
+// LLM
 async function runLLM() {
   const prompt = document.getElementById('llm-input').value.trim();
   const status = document.getElementById('llm-status');
@@ -327,10 +316,10 @@ async function runLLM() {
       const updated = lines.map((l, j) => j === i ? '▶ ' + l.slice(2) : l);
       plan.textContent = updated.join('\n');
       status.textContent = `▶ ${labelMap[cmds[i].cmd]}`;
-      await sendCmdViaRelay(cmds[i].cmd);
+      await sendCmd(cmds[i].cmd);
       await new Promise(r => setTimeout(r, cmds[i].duration));
     }
-    await sendCmdViaRelay('S');
+    await sendCmd('S');
     plan.textContent = lines.join('\n');
     status.textContent = '✅ Done!';
     status.className = 'llm-status done';
