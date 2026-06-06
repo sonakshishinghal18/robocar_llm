@@ -103,7 +103,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.1.4</div>
+<div class="version">robocar v1.2.0</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -274,6 +274,9 @@ function toggleAuto() {
 
 // Start camera + WebRTC
 async function startCamera() {
+  // Unlock audio context on user gesture
+  const utt = new SpeechSynthesisUtterance('');
+  window.speechSynthesis.speak(utt);
   document.getElementById('start-btn').style.display = 'none';
   try {
     stream = await navigator.mediaDevices.getUserMedia({
