@@ -103,7 +103,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.2.1</div>
+<div class="version">robocar v1.2.2</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -136,12 +136,14 @@ function speak(text) {
   window.speechSynthesis.speak(utt);
 }
 
-// Send motor command via Render relay (iPhone Safari blocks direct HTTP)
+// Send motor command via Render relay
 async function sendCmd(cmd) {
   try {
-    await fetch(`${BACKEND}/relay?ip=${ROBOT_IP}&v=${cmd}`);
+    const res = await fetch(`${BACKEND}/relay?ip=${ROBOT_IP}&v=${cmd}`);
+    const text = await res.text();
+    setHeard('Motor: ' + cmd + ' → ' + (res.ok ? 'OK' : 'ERR ' + text));
   } catch(e) {
-    console.log('sendCmd error:', e.message);
+    setHeard('sendCmd error: ' + e.message);
   }
 }
 
