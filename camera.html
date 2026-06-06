@@ -104,7 +104,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.2.4</div>
+<div class="version">robocar v1.3.0</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -143,12 +143,14 @@ function speak(text) {
   window.speechSynthesis.speak(utt);
 }
 
-// Send motor command directly to ESP32 via hidden image (bypasses mixed content)
+// Send motor command via WebSocket → Mac Chrome → ESP32
 function sendCmd(cmd) {
-  const img = new Image();
-  img.onload = () => setMotor(cmd, true);
-  img.onerror = () => setMotor(cmd, false);
-  img.src = `http://${ROBOT_IP}/cmd?v=${cmd}&t=${Date.now()}`;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'motor', cmd: cmd }));
+    setMotor(cmd, true);
+  } else {
+    setHeard('WebSocket not connected');
+  }
 }
 
 // Capture frame
