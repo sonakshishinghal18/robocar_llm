@@ -160,6 +160,7 @@
   </div>
   <div class="camera-overlay">
     <span class="cam-status" id="cam-status">No camera</span>
+    <button class="connect-cam-btn" onclick="rotateVideo()" style="background:#3a3a4a; margin-right:6px;">🔄 Rotate</button>
     <button class="connect-cam-btn" id="connect-cam-btn" onclick="connectCamera()">Connect Camera</button>
   </div>
 </div>
@@ -233,6 +234,18 @@ let robotIP = localStorage.getItem('robotIP') || '192.168.0.101';
 document.getElementById('ip-input').value = robotIP;
 let ws = null, pc = null;
 
+let videoRotation = 0;
+function rotateVideo() {
+  videoRotation = (videoRotation + 90) % 360;
+  const video = document.getElementById('remote-video');
+  video.style.transform = `rotate(${videoRotation}deg)`;
+  if (videoRotation === 90 || videoRotation === 270) {
+    video.style.objectFit = 'contain';
+  } else {
+    video.style.objectFit = 'cover';
+  }
+}
+
 function saveIP() {
   robotIP = document.getElementById('ip-input').value.trim();
   localStorage.setItem('robotIP', robotIP);
@@ -283,6 +296,13 @@ function connectCamera() {
       ws.send(JSON.stringify({ type: 'signal', target: CAM_ID, data: offer }));
     }
 
+    if (msg.type === 'motor') {
+      // Received motor command from iPhone camera — forward to ESP32
+      const cmd = msg.cmd;
+      fetch(`http://${robotIP}/cmd?v=${cmd}`);
+      setLog('🤖 Vision: ' + {F:'Forward',B:'Backward',L:'Left',R:'Right',S:'Stop'}[cmd]);
+    }
+
     if (msg.type === 'signal') {
       const data = msg.data;
       if (data.type === 'answer') {
@@ -311,10 +331,10 @@ function connectCamera() {
   };
 }
 
-// Motor commands via Render relay (bypasses mixed content block)
+// Motor commands — direct to ESP32
 async function sendCmd(cmd) {
   try {
-    await fetch(`${BACKEND}/relay?ip=${robotIP}&v=${cmd}`);
+    await fetch(`http://${robotIP}/cmd?v=${cmd}`);
     const labels = { F:'Forward', B:'Backward', L:'Left', R:'Right', S:'Stop' };
     setLog('→ ' + labels[cmd]);
   } catch(e) { setLog('Error: ' + e.message); }
