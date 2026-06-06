@@ -103,7 +103,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.2.2</div>
+<div class="version">robocar v1.2.3</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -136,15 +136,12 @@ function speak(text) {
   window.speechSynthesis.speak(utt);
 }
 
-// Send motor command via Render relay
-async function sendCmd(cmd) {
-  try {
-    const res = await fetch(`${BACKEND}/relay?ip=${ROBOT_IP}&v=${cmd}`);
-    const text = await res.text();
-    setHeard('Motor: ' + cmd + ' → ' + (res.ok ? 'OK' : 'ERR ' + text));
-  } catch(e) {
-    setHeard('sendCmd error: ' + e.message);
-  }
+// Send motor command directly to ESP32 via hidden image (bypasses mixed content)
+function sendCmd(cmd) {
+  const img = new Image();
+  img.onload = () => setHeard('Motor: ' + cmd + ' ✅');
+  img.onerror = () => setHeard('Motor: ' + cmd + ' sent');
+  img.src = `http://${ROBOT_IP}/cmd?v=${cmd}&t=${Date.now()}`;
 }
 
 // Capture frame
