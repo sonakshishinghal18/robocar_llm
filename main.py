@@ -27,7 +27,8 @@ Respond with ONLY the JSON array, no explanation, no markdown backticks.
 Example: [{"cmd":"F","duration":2000},{"cmd":"L","duration":600},{"cmd":"S","duration":300}]"""
 
 VISION_PROMPT = """You are a robot car brain. Camera faces forward only — you cannot see left/right directly.
-Reply ONLY JSON: {"cmd":"F/B/L/R/S","duration":300,"narration":"Hindi"}
+Reply ONLY JSON: {"cmd":"F/B/L/R","duration":800,"narration":"Hindi"}
+Note: Never use S — code automatically stops after every command.
 
 DECISION RULES (follow in order):
 
