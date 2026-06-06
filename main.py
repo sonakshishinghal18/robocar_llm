@@ -140,6 +140,17 @@ async def websocket_signal(websocket: WebSocket):
                 peer_id = data.get("id")
                 connected_peers[peer_id] = websocket
                 await websocket.send_text(json.dumps({"type": "registered", "id": peer_id}))
+            elif msg_type == "motor":
+                # Forward motor command to all other connected peers
+                for pid, peer_ws in connected_peers.items():
+                    if pid != peer_id:
+                        try:
+                            await peer_ws.send_text(json.dumps({
+                                "type": "motor",
+                                "cmd": data.get("cmd")
+                            }))
+                        except:
+                            pass
             elif msg_type == "signal":
                 target_id = data.get("target")
                 if target_id in connected_peers:
