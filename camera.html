@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,8 +64,6 @@
   .btn-start  { background: #1c86f5; color: #fff; }
   .btn-auto   { background: #1e3a1e; color: #30d158; border: 1px solid #30d158; }
   .btn-auto.on { background: #30d158; color: #000; }
-  .btn-voice  { background: #1a1a26; color: #1c86f5; border: 1px solid #1c86f5; }
-  .btn-voice.listening { background: #ff453a; color: #fff; border-color: #ff453a; }
 
   .heard-text {
     font-size: 12px; color: #aeaeb2; text-align: center;
@@ -97,7 +94,7 @@
     <div class="heard-text" id="heard-text"></div>
     <div class="btn-row" id="control-btns">
       <button class="btn btn-auto" id="auto-btn" onclick="toggleAuto()" style="display:none">🤖 Auto OFF</button>
-      <button class="btn btn-voice" id="voice-btn" onclick="toggleVoice()" style="display:none">🎤 Speak</button>
+
     </div>
     <div class="btn-row">
       <button class="btn" id="stop-cam-btn" onclick="stopCamera()" style="display:none; background:#1a1a26; color:#ff453a; border:1px solid #ff453a;">⏹ Stop Camera</button>
@@ -106,7 +103,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.1.1</div>
+<div class="version">robocar v1.1.2</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -282,7 +279,6 @@ async function startCamera() {
     document.getElementById('video').srcObject = stream;
     setStatus('📷 Camera on', 'active');
     document.getElementById('auto-btn').style.display = 'flex';
-    document.getElementById('voice-btn').style.display = 'flex';
     document.getElementById('stop-cam-btn').style.display = 'flex';
     connectSignaling();
   } catch(e) {
@@ -301,7 +297,6 @@ function stopCamera() {
   sendCmd('S');
   document.getElementById('video').srcObject = null;
   document.getElementById('auto-btn').style.display = 'none';
-  document.getElementById('voice-btn').style.display = 'none';
   document.getElementById('stop-cam-btn').style.display = 'none';
   document.getElementById('start-btn').style.display = 'block';
   setStatus('Camera off', '');
