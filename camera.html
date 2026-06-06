@@ -103,7 +103,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.1.2</div>
+<div class="version">robocar v1.1.4</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -136,12 +136,12 @@ function speak(text) {
   window.speechSynthesis.speak(utt);
 }
 
-// Send motor command to ESP32
+// Send motor command to ESP32 — direct local WiFi
 async function sendCmd(cmd) {
   try {
     await fetch(`http://${ROBOT_IP}/cmd?v=${cmd}`);
   } catch(e) {
-    try { await fetch(`${BACKEND}/relay?ip=${ROBOT_IP}&v=${cmd}`); } catch(_) {}
+    console.log('sendCmd error:', e.message);
   }
 }
 
@@ -156,15 +156,19 @@ function captureFrame() {
 
 // Vision loop
 async function runVision() {
-  if (isProcessing || !autoMode) return;
+  setNarration('Vision running… ' + new Date().toLocaleTimeString());
+  if (isProcessing) { setNarration('Skipped — still processing'); return; }
+  if (!autoMode) { setNarration('Skipped — auto off'); return; }
   isProcessing = true;
   try {
+    const frame = captureFrame();
+    setNarration('Frame captured — calling Gemini…');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(BACKEND + '/vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: captureFrame() }),
+      body: JSON.stringify({ image: frame }),
       signal: controller.signal
     });
     clearTimeout(timeout);
