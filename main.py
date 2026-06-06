@@ -107,7 +107,8 @@ async def vision(req: VisionRequest):
             }
         )
         data = res.json()
-        # Debug: log full response if unexpected
+        # Debug: log full response
+        print("Gemini response:", json.dumps(data)[:500])
         if "candidates" not in data:
             raise HTTPException(status_code=500, detail=f"Gemini error: {json.dumps(data)}")
         raw = data["candidates"][0]["content"]["parts"][0]["text"]
