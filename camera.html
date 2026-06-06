@@ -187,12 +187,12 @@ async function runVision() {
       // Execute move for 300ms then auto-stop
       sendCmd(data.cmd);
       setStatus('🤖 ' + (cmdLabel[data.cmd] || data.cmd), 'active');
-      // Only speak when Gemini says scene changed (narrate: true)
-      if (data.narrate && data.narration) {
+      // Speak when narration exists and command changed
+      if (data.narration && data.cmd !== lastVisionCmd) {
         setNarration(data.narration);
         speak(data.narration);
-      } else if (!data.narrate) {
-        // Keep last narration on screen, don't speak
+      } else if (data.narration) {
+        setNarration(data.narration); // Update text on screen silently
       }
       lastVisionCmd = data.cmd;
       // Auto-insert Stop after 300ms for any movement command
