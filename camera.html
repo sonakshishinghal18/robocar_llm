@@ -104,7 +104,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.3.0</div>
+<div class="version">robocar v1.3.1</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -157,9 +157,9 @@ function sendCmd(cmd) {
 function captureFrame() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  canvas.width = 320; canvas.height = 240;
-  canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
-  return canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+  canvas.width = 256; canvas.height = 192;
+  canvas.getContext('2d').drawImage(video, 0, 0, 256, 192);
+  return canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
 }
 
 // Vision loop
@@ -170,7 +170,7 @@ async function runVision() {
   isProcessing = true;
   try {
     const frame = captureFrame();
-    setNarration('Frame captured — calling Gemini…');
+    setNarration('📸 Analyzing…');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(BACKEND + '/vision', {
@@ -268,8 +268,8 @@ function toggleAuto() {
   if (autoMode) {
     btn.textContent = '🤖 Auto ON';
     btn.classList.add('on');
-    setStatus('🤖 Autonomous — analyzing every 6s', 'active');
-    autoInterval = setInterval(runVision, 6000);
+    setStatus('🤖 Autonomous — analyzing every 2s', 'active');
+    autoInterval = setInterval(runVision, 2000);
   } else {
     btn.textContent = '🤖 Auto OFF';
     btn.classList.remove('on');
