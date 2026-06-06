@@ -107,9 +107,16 @@ async def vision(req: VisionRequest):
             }
         )
         data = res.json()
+        # Debug: log full response if unexpected
+        if "candidates" not in data:
+            raise HTTPException(status_code=500, detail=f"Gemini error: {json.dumps(data)}")
         raw = data["candidates"][0]["content"]["parts"][0]["text"]
         clean = raw.replace("```json", "").replace("```", "").strip()
-        result = json.loads(clean)
+        # Handle case where Gemini returns non-JSON
+        try:
+            result = json.loads(clean)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail=f"Gemini non-JSON response: {clean}")
         return result
 
 @app.websocket("/signal")
