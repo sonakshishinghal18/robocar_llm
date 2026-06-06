@@ -104,7 +104,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.3.1</div>
+<div class="version">robocar v1.3.2</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -116,6 +116,7 @@ let stream = null, ws = null;
 let autoMode = false, autoInterval = null;
 let isProcessing = false, isSpeaking = false;
 let recognition = null, listening = false;
+let lastVisionCmd = null;
 
 function setMotor(cmd, ok) {
   const labels = { F:'⬆ Forward', B:'⬇ Back', L:'⬅ Left', R:'➡ Right', S:'⏹ Stop' };
@@ -157,9 +158,9 @@ function sendCmd(cmd) {
 function captureFrame() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  canvas.width = 256; canvas.height = 192;
-  canvas.getContext('2d').drawImage(video, 0, 0, 256, 192);
-  return canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
+  canvas.width = 320; canvas.height = 240;
+  canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+  return canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
 }
 
 // Vision loop
@@ -182,12 +183,14 @@ async function runVision() {
     clearTimeout(timeout);
     const data = await res.json();
     if (data.cmd) {
-      await sendCmd(data.cmd);
+      sendCmd(data.cmd);
       setStatus('🤖 Auto — ' + ({F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right',S:'Stopping'}[data.cmd] || data.cmd), 'active');
-    }
-    if (data.narration) {
-      setNarration(data.narration);
-      speak(data.narration);
+      // Only speak narration when command changes (avoids cutting off speech)
+      if (data.narration && data.cmd !== lastVisionCmd) {
+        setNarration(data.narration);
+        speak(data.narration);
+      }
+      lastVisionCmd = data.cmd;
     }
   } catch(e) {
     setNarration('Vision error — retrying…');
