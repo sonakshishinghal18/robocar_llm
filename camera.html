@@ -260,8 +260,8 @@ function toggleAuto() {
   if (autoMode) {
     btn.textContent = '🤖 Auto ON';
     btn.classList.add('on');
-    setStatus('🤖 Autonomous — analyzing every 4s', 'active');
-    autoInterval = setInterval(runVision, 4000);
+    setStatus('🤖 Autonomous — analyzing every 2.5s', 'active');
+    autoInterval = setInterval(runVision, 2500);
   } else {
     btn.textContent = '🤖 Auto OFF';
     btn.classList.remove('on');
