@@ -88,6 +88,7 @@
       <span id="status-text">Tap Start to begin</span>
     </div>
     <div class="narration" id="narration">—</div>
+    <div style="margin-top:8px; font-size:18px; font-weight:700; letter-spacing:2px;" id="motor-status">—</div>
   </div>
 
   <div class="bottom-bar">
@@ -103,7 +104,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.2.3</div>
+<div class="version">robocar v1.2.4</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -115,6 +116,12 @@ let stream = null, ws = null;
 let autoMode = false, autoInterval = null;
 let isProcessing = false, isSpeaking = false;
 let recognition = null, listening = false;
+
+function setMotor(cmd, ok) {
+  const labels = { F:'⬆ Forward', B:'⬇ Back', L:'⬅ Left', R:'➡ Right', S:'⏹ Stop' };
+  document.getElementById('motor-status').textContent = labels[cmd] || cmd;
+  document.getElementById('motor-status').style.color = cmd === 'S' ? '#ff453a' : '#30d158';
+}
 
 function setStatus(msg, state) {
   document.getElementById('status-text').textContent = msg;
@@ -139,8 +146,8 @@ function speak(text) {
 // Send motor command directly to ESP32 via hidden image (bypasses mixed content)
 function sendCmd(cmd) {
   const img = new Image();
-  img.onload = () => setHeard('Motor: ' + cmd + ' ✅');
-  img.onerror = () => setHeard('Motor: ' + cmd + ' sent');
+  img.onload = () => setMotor(cmd, true);
+  img.onerror = () => setMotor(cmd, false);
   img.src = `http://${ROBOT_IP}/cmd?v=${cmd}&t=${Date.now()}`;
 }
 
