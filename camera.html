@@ -103,7 +103,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.2.0</div>
+<div class="version">robocar v1.2.1</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -136,10 +136,10 @@ function speak(text) {
   window.speechSynthesis.speak(utt);
 }
 
-// Send motor command to ESP32 — direct local WiFi
+// Send motor command via Render relay (iPhone Safari blocks direct HTTP)
 async function sendCmd(cmd) {
   try {
-    await fetch(`http://${ROBOT_IP}/cmd?v=${cmd}`);
+    await fetch(`${BACKEND}/relay?ip=${ROBOT_IP}&v=${cmd}`);
   } catch(e) {
     console.log('sendCmd error:', e.message);
   }
@@ -260,8 +260,8 @@ function toggleAuto() {
   if (autoMode) {
     btn.textContent = '🤖 Auto ON';
     btn.classList.add('on');
-    setStatus('🤖 Autonomous — analyzing every 2.5s', 'active');
-    autoInterval = setInterval(runVision, 2500);
+    setStatus('🤖 Autonomous — analyzing every 6s', 'active');
+    autoInterval = setInterval(runVision, 6000);
   } else {
     btn.textContent = '🤖 Auto OFF';
     btn.classList.remove('on');
