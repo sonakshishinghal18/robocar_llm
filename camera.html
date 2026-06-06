@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,54 +6,77 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Robocar Camera</title>
+<title>Robocar AI</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #000; color: #fff; font-family: -apple-system, sans-serif; height: 100vh; overflow: hidden; }
   video { width: 100vw; height: 100vh; object-fit: cover; }
   canvas { display: none; }
+
   .overlay {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    pointer-events: none; z-index: 10;
+    position: fixed; inset: 0; pointer-events: none; z-index: 10;
   }
-  .version {
-    position: absolute; bottom: 8px; right: 12px;
-    font-size: 10px; color: rgba(255,255,255,0.3);
-    font-family: monospace; pointer-events: none;
-  }
+
+  /* Top bar */
   .top-bar {
     position: absolute; top: 0; left: 0; right: 0;
-    padding: 20px 16px 40px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
+    padding: 50px 20px 30px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
     pointer-events: all;
   }
-  .status { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-  .narration {
-    font-size: 13px; color: #e0e0e0; line-height: 1.5;
-    background: rgba(0,0,0,0.5); border-radius: 10px;
-    padding: 8px 12px; margin-top: 8px;
-    min-height: 20px;
+  .status {
+    font-size: 15px; font-weight: 600; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 8px;
   }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #636370; flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .status-dot.active { background: #30d158; box-shadow: 0 0 6px #30d15880; animation: pulse 1.5s infinite; }
+  .status-dot.listening { background: #ff453a; animation: pulse 0.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .narration {
+    font-size: 14px; color: #e0e0e0; line-height: 1.6;
+    background: rgba(0,0,0,0.55); border-radius: 12px;
+    padding: 10px 14px; margin-top: 8px;
+    min-height: 22px; border-left: 3px solid #1c86f5;
+  }
+
+  /* Bottom bar */
   .bottom-bar {
     position: absolute; bottom: 0; left: 0; right: 0;
-    padding: 40px 16px 40px;
-    background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
-    display: flex; justify-content: space-between; align-items: flex-end;
+    padding: 30px 20px 50px;
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+    display: flex; flex-direction: column; gap: 12px;
     pointer-events: all;
   }
+
+  .btn-row { display: flex; gap: 10px; }
+
   .btn {
-    padding: 12px 20px; border-radius: 25px; border: none;
+    flex: 1; padding: 14px; border-radius: 16px; border: none;
     font-size: 14px; font-weight: 600; cursor: pointer;
-    touch-action: manipulation;
+    touch-action: manipulation; transition: opacity 0.15s, transform 0.1s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
-  .btn-start { background: #1c86f5; color: #fff; }
-  .btn-stop  { background: #ff453a; color: #fff; }
-  .btn-auto  { background: #30d158; color: #fff; }
-  .btn-auto.active { background: #ff9f0a; }
-  .cmd-badge {
-    font-size: 28px; font-weight: 700;
-    background: rgba(0,0,0,0.6); border-radius: 12px;
-    padding: 6px 14px; letter-spacing: 2px;
+  .btn:active { opacity: 0.7; transform: scale(0.97); }
+  .btn-start  { background: #1c86f5; color: #fff; }
+  .btn-auto   { background: #1e3a1e; color: #30d158; border: 1px solid #30d158; }
+  .btn-auto.on { background: #30d158; color: #000; }
+  .btn-voice  { background: #1a1a26; color: #1c86f5; border: 1px solid #1c86f5; }
+  .btn-voice.listening { background: #ff453a; color: #fff; border-color: #ff453a; }
+
+  .heard-text {
+    font-size: 12px; color: #aeaeb2; text-align: center;
+    min-height: 16px; padding: 0 10px;
+  }
+
+  .version {
+    position: absolute; bottom: 8px; right: 12px;
+    font-size: 10px; color: rgba(255,255,255,0.25);
+    font-family: monospace; pointer-events: none;
   }
 </style>
 </head>
@@ -62,67 +86,75 @@
 
 <div class="overlay">
   <div class="top-bar">
-    <div class="status" id="status">Tap Start to begin</div>
+    <div class="status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Tap Start to begin</span>
+    </div>
     <div class="narration" id="narration">—</div>
   </div>
+
   <div class="bottom-bar">
-    <button class="btn btn-start" id="start-btn" onclick="startCamera()">▶ Start</button>
-    <div class="cmd-badge" id="cmd-badge">—</div>
-    <button class="btn btn-auto" id="auto-btn" onclick="toggleAuto()" style="display:none">🤖 Auto OFF</button>
+    <div class="heard-text" id="heard-text"></div>
+    <div class="btn-row" id="control-btns">
+      <button class="btn btn-auto" id="auto-btn" onclick="toggleAuto()" style="display:none">🤖 Auto OFF</button>
+      <button class="btn btn-voice" id="voice-btn" onclick="toggleVoice()" style="display:none">🎤 Speak</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="stop-cam-btn" onclick="stopCamera()" style="display:none; background:#1a1a26; color:#ff453a; border:1px solid #ff453a;">⏹ Stop Camera</button>
+    </div>
+    <button class="btn btn-start" id="start-btn" onclick="startCamera()">▶ Start Robocar</button>
   </div>
 </div>
-<div class="version">robocar v1.0.0</div>
+
+<div class="version">robocar v1.1.1</div>
 
 <script>
-const BACKEND = 'https://robocar-llm.onrender.com';
-const SIGNAL  = 'wss://robocar-llm.onrender.com/signal';
-const CAM_ID  = 'robocar-cam';
+const BACKEND   = 'https://robocar-llm.onrender.com';
+const SIGNAL    = 'wss://robocar-llm.onrender.com/signal';
+const CAM_ID    = 'robocar-cam';
+const ROBOT_IP  = '192.168.0.101';
 
-let stream = null, ws = null, autoMode = false;
-let autoInterval = null, isSpeaking = false, isProcessing = false;
-let robotIP = '192.168.0.101';
+let stream = null, ws = null;
+let autoMode = false, autoInterval = null;
+let isProcessing = false, isSpeaking = false;
+let recognition = null, listening = false;
 
-function setStatus(msg) { document.getElementById('status').textContent = msg; }
-function setNarration(msg) { document.getElementById('narration').textContent = msg; }
-function setCmdBadge(cmd) {
-  const labels = { F:'⬆ FWD', B:'⬇ BCK', L:'⬅ LFT', R:'➡ RGT', S:'⏹ STP' };
-  document.getElementById('cmd-badge').textContent = labels[cmd] || cmd;
+function setStatus(msg, state) {
+  document.getElementById('status-text').textContent = msg;
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot' + (state ? ' ' + state : '');
 }
+function setNarration(msg) { document.getElementById('narration').textContent = msg; }
+function setHeard(msg) { document.getElementById('heard-text').textContent = msg; }
 
-// TTS
+// TTS — Hindi
 function speak(text) {
-  if (!text || isSpeaking) return;
+  if (!text) return;
+  window.speechSynthesis.cancel();
   const utt = new SpeechSynthesisUtterance(text);
   utt.lang = 'hi-IN';
   utt.rate = 1.1;
-  utt.pitch = 1.0;
   isSpeaking = true;
-  utt.onend = () => { isSpeaking = false; };
-  utt.onerror = () => { isSpeaking = false; };
+  utt.onend = utt.onerror = () => { isSpeaking = false; };
   window.speechSynthesis.speak(utt);
-}
-
-// Capture frame as base64
-function captureFrame() {
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  canvas.width = 320;
-  canvas.height = 240;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, 320, 240);
-  const dataURL = canvas.toDataURL('image/jpeg', 0.5);
-  return dataURL.split(',')[1]; // base64 only
 }
 
 // Send motor command to ESP32
 async function sendCmd(cmd) {
   try {
-    await fetch(`http://${robotIP}/cmd?v=${cmd}`);
-    setCmdBadge(cmd);
+    await fetch(`http://${ROBOT_IP}/cmd?v=${cmd}`);
   } catch(e) {
-    // try relay fallback
-    try { await fetch(`${BACKEND}/relay?ip=${robotIP}&v=${cmd}`); setCmdBadge(cmd); } catch(_) {}
+    try { await fetch(`${BACKEND}/relay?ip=${ROBOT_IP}&v=${cmd}`); } catch(_) {}
   }
+}
+
+// Capture frame
+function captureFrame() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  canvas.width = 320; canvas.height = 240;
+  canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+  return canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
 }
 
 // Vision loop
@@ -130,43 +162,93 @@ async function runVision() {
   if (isProcessing || !autoMode) return;
   isProcessing = true;
   try {
-    const image = captureFrame();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(BACKEND + '/vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image }),
+      body: JSON.stringify({ image: captureFrame() }),
       signal: controller.signal
     });
     clearTimeout(timeout);
     const data = await res.json();
-    if (data.cmd) await sendCmd(data.cmd);
+    if (data.cmd) {
+      await sendCmd(data.cmd);
+      setStatus('🤖 Auto — ' + ({F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right',S:'Stopping'}[data.cmd] || data.cmd), 'active');
+    }
     if (data.narration) {
       setNarration(data.narration);
       speak(data.narration);
     }
   } catch(e) {
-    setNarration('Vision error: ' + e.message + ' — retrying...');
+    setNarration('Vision error — retrying…');
   }
   isProcessing = false;
 }
 
-// Start camera
-async function startCamera() {
-  document.getElementById('start-btn').style.display = 'none';
+// Voice command
+function toggleVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setHeard('Mic not supported'); return; }
+  if (listening) { recognition && recognition.stop(); return; }
+
+  recognition = new SR();
+  recognition.lang = 'hi-IN';
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    listening = true;
+    setStatus('🎤 Listening…', 'listening');
+    document.getElementById('voice-btn').classList.add('listening');
+    document.getElementById('voice-btn').textContent = '🎤 Listening…';
+    if (autoMode) toggleAuto(); // pause auto while listening
+  };
+
+  recognition.onend = () => {
+    listening = false;
+    document.getElementById('voice-btn').classList.remove('listening');
+    document.getElementById('voice-btn').textContent = '🎤 Speak';
+    setStatus('📷 Camera on', 'active');
+  };
+
+  recognition.onresult = async (e) => {
+    const text = e.results[0][0].transcript;
+    setHeard('🎤 "' + text + '"');
+    setNarration('Processing: ' + text);
+    await runVoiceCommand(text);
+  };
+
+  recognition.onerror = (e) => setHeard('Mic error: ' + e.error);
+  recognition.start();
+}
+
+async function runVoiceCommand(text) {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
+    setStatus('🧠 Thinking…', 'active');
+    const res = await fetch(BACKEND + '/drive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
     });
-    document.getElementById('video').srcObject = stream;
-    setStatus('📷 Camera on');
-    document.getElementById('auto-btn').style.display = 'block';
-    connectSignaling();
+    const data = await res.json();
+    const raw = data.result || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const cmds = JSON.parse(clean);
+
+    const labelMap = { F:'आगे', B:'पीछे', L:'बाएं', R:'दाएं', S:'रुको' };
+    const narration = 'ठीक है! ' + cmds.map(c => labelMap[c.cmd] + ' ' + (c.duration/1000).toFixed(1) + ' सेकंड').join(', ');
+    setNarration(narration);
+    speak(narration);
+
+    setStatus('▶ Executing…', 'active');
+    for (const step of cmds) {
+      await sendCmd(step.cmd);
+      await new Promise(r => setTimeout(r, step.duration));
+    }
+    await sendCmd('S');
+    setStatus('✅ Done', 'active');
   } catch(e) {
-    setStatus('Camera error: ' + e.message);
-    document.getElementById('start-btn').style.display = 'block';
+    setNarration('Error: ' + e.message);
   }
 }
 
@@ -176,49 +258,77 @@ function toggleAuto() {
   const btn = document.getElementById('auto-btn');
   if (autoMode) {
     btn.textContent = '🤖 Auto ON';
-    btn.classList.add('active');
-    setStatus('🤖 Autonomous mode — analyzing every 4s');
+    btn.classList.add('on');
+    setStatus('🤖 Autonomous — analyzing every 4s', 'active');
     autoInterval = setInterval(runVision, 4000);
   } else {
     btn.textContent = '🤖 Auto OFF';
-    btn.classList.remove('active');
-    setStatus('📷 Manual mode');
+    btn.classList.remove('on');
     clearInterval(autoInterval);
     sendCmd('S');
+    setStatus('📷 Camera on', 'active');
     setNarration('Autonomous mode stopped.');
   }
 }
 
-// WebRTC signaling
+// Start camera + WebRTC
+async function startCamera() {
+  document.getElementById('start-btn').style.display = 'none';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    document.getElementById('video').srcObject = stream;
+    setStatus('📷 Camera on', 'active');
+    document.getElementById('auto-btn').style.display = 'flex';
+    document.getElementById('voice-btn').style.display = 'flex';
+    document.getElementById('stop-cam-btn').style.display = 'flex';
+    connectSignaling();
+  } catch(e) {
+    setStatus('Camera error: ' + e.message);
+    document.getElementById('start-btn').style.display = 'block';
+  }
+}
+
+// Stop camera
+function stopCamera() {
+  if (autoMode) toggleAuto();
+  if (listening) recognition && recognition.stop();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ws) ws.close();
+  window.speechSynthesis.cancel();
+  sendCmd('S');
+  document.getElementById('video').srcObject = null;
+  document.getElementById('auto-btn').style.display = 'none';
+  document.getElementById('voice-btn').style.display = 'none';
+  document.getElementById('stop-cam-btn').style.display = 'none';
+  document.getElementById('start-btn').style.display = 'block';
+  setStatus('Camera off', '');
+  setNarration('—');
+}
+
+// WebRTC signaling for Mac viewer
 function connectSignaling() {
   ws = new WebSocket(SIGNAL);
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ type: 'register', id: CAM_ID }));
-    setStatus('📷 Camera ready — open controller on Mac');
-  };
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'register', id: CAM_ID }));
   ws.onmessage = async (evt) => {
     const msg = JSON.parse(evt.data);
     if (msg.type === 'pong') return;
-    if (msg.type === 'registered') return;
-    if (msg.type === 'signal') {
-      const data = msg.data;
-      if (data.type === 'offer') {
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
-        pc.onicecandidate = e => {
-          if (e.candidate) ws.send(JSON.stringify({ type: 'signal', target: msg.from, data: { type: 'candidate', candidate: e.candidate } }));
-        };
-        await pc.setRemoteDescription(new RTCSessionDescription(data));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: 'signal', target: msg.from, data: answer }));
-      } else if (data.type === 'candidate') {
-        // handled by pc above
-      }
+    if (msg.type === 'signal' && msg.data.type === 'offer') {
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      pc.onicecandidate = e => {
+        if (e.candidate) ws.send(JSON.stringify({ type: 'signal', target: msg.from, data: { type: 'candidate', candidate: e.candidate } }));
+      };
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      ws.send(JSON.stringify({ type: 'signal', target: msg.from, data: answer }));
     }
   };
   setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
-  ws.onclose = () => { setTimeout(connectSignaling, 3000); };
+  ws.onclose = () => setTimeout(connectSignaling, 3000);
 }
 </script>
 </body>
