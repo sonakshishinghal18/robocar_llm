@@ -119,7 +119,7 @@ async def vision(req: VisionRequest):
                 }],
                 "generationConfig": {
                     "temperature": 0.9,
-                    "maxOutputTokens": 120
+                    "maxOutputTokens": 300
                 }
             }
         )
