@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Robocar Camera</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #fff; font-family: -apple-system, sans-serif; height: 100vh; overflow: hidden; }
+  video { width: 100vw; height: 100vh; object-fit: cover; }
+  canvas { display: none; }
+  .overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 10;
+  }
+  .top-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 20px 16px 40px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
+    pointer-events: all;
+  }
+  .status { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .narration {
+    font-size: 13px; color: #e0e0e0; line-height: 1.5;
+    background: rgba(0,0,0,0.5); border-radius: 10px;
+    padding: 8px 12px; margin-top: 8px;
+    min-height: 20px;
+  }
+  .bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 40px 16px 40px;
+    background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+    display: flex; justify-content: space-between; align-items: flex-end;
+    pointer-events: all;
+  }
+  .btn {
+    padding: 12px 20px; border-radius: 25px; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .btn-start { background: #1c86f5; color: #fff; }
+  .btn-stop  { background: #ff453a; color: #fff; }
+  .btn-auto  { background: #30d158; color: #fff; }
+  .btn-auto.active { background: #ff9f0a; }
+  .cmd-badge {
+    font-size: 28px; font-weight: 700;
+    background: rgba(0,0,0,0.6); border-radius: 12px;
+    padding: 6px 14px; letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<div class="overlay">
+  <div class="top-bar">
+    <div class="status" id="status">Tap Start to begin</div>
+    <div class="narration" id="narration">—</div>
+  </div>
+  <div class="bottom-bar">
+    <button class="btn btn-start" id="start-btn" onclick="startCamera()">▶ Start</button>
+    <div class="cmd-badge" id="cmd-badge">—</div>
+    <button class="btn btn-auto" id="auto-btn" onclick="toggleAuto()" style="display:none">🤖 Auto OFF</button>
+  </div>
+</div>
+
+<script>
+const BACKEND = 'https://robocar-llm.onrender.com';
+const SIGNAL  = 'wss://robocar-llm.onrender.com/signal';
+const CAM_ID  = 'robocar-cam';
+
+let stream = null, ws = null, autoMode = false;
+let autoInterval = null, isSpeaking = false, isProcessing = false;
+let robotIP = '192.168.0.101';
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function setNarration(msg) { document.getElementById('narration').textContent = msg; }
+function setCmdBadge(cmd) {
+  const labels = { F:'⬆ FWD', B:'⬇ BCK', L:'⬅ LFT', R:'➡ RGT', S:'⏹ STP' };
+  document.getElementById('cmd-badge').textContent = labels[cmd] || cmd;
+}
+
+// TTS
+function speak(text) {
+  if (!text || isSpeaking) return;
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = 'hi-IN';
+  utt.rate = 1.1;
+  utt.pitch = 1.0;
+  isSpeaking = true;
+  utt.onend = () => { isSpeaking = false; };
+  utt.onerror = () => { isSpeaking = false; };
+  window.speechSynthesis.speak(utt);
+}
+
+// Capture frame as base64
+function captureFrame() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, 640, 480);
+  const dataURL = canvas.toDataURL('image/jpeg', 0.7);
+  return dataURL.split(',')[1]; // base64 only
+}
+
+// Send motor command to ESP32
+async function sendCmd(cmd) {
+  try {
+    await fetch(`http://${robotIP}/cmd?v=${cmd}`);
+    setCmdBadge(cmd);
+  } catch(e) {
+    // try relay fallback
+    try { await fetch(`${BACKEND}/relay?ip=${robotIP}&v=${cmd}`); setCmdBadge(cmd); } catch(_) {}
+  }
+}
+
+// Vision loop
+async function runVision() {
+  if (isProcessing || !autoMode) return;
+  isProcessing = true;
+  try {
+    const image = captureFrame();
+    const res = await fetch(BACKEND + '/vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image })
+    });
+    const data = await res.json();
+    if (data.cmd) await sendCmd(data.cmd);
+    if (data.narration) {
+      setNarration(data.narration);
+      speak(data.narration);
+    }
+  } catch(e) {
+    setNarration('Vision error: ' + e.message);
+  }
+  isProcessing = false;
+}
+
+// Start camera
+async function startCamera() {
+  document.getElementById('start-btn').style.display = 'none';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    document.getElementById('video').srcObject = stream;
+    setStatus('📷 Camera on');
+    document.getElementById('auto-btn').style.display = 'block';
+    connectSignaling();
+  } catch(e) {
+    setStatus('Camera error: ' + e.message);
+    document.getElementById('start-btn').style.display = 'block';
+  }
+}
+
+// Toggle autonomous mode
+function toggleAuto() {
+  autoMode = !autoMode;
+  const btn = document.getElementById('auto-btn');
+  if (autoMode) {
+    btn.textContent = '🤖 Auto ON';
+    btn.classList.add('active');
+    setStatus('🤖 Autonomous mode — analyzing every 4s');
+    autoInterval = setInterval(runVision, 4000);
+  } else {
+    btn.textContent = '🤖 Auto OFF';
+    btn.classList.remove('active');
+    setStatus('📷 Manual mode');
+    clearInterval(autoInterval);
+    sendCmd('S');
+    setNarration('Autonomous mode stopped.');
+  }
+}
+
+// WebRTC signaling
+function connectSignaling() {
+  ws = new WebSocket(SIGNAL);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'register', id: CAM_ID }));
+    setStatus('📷 Camera ready — open controller on Mac');
+  };
+  ws.onmessage = async (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.type === 'pong') return;
+    if (msg.type === 'registered') return;
+    if (msg.type === 'signal') {
+      const data = msg.data;
+      if (data.type === 'offer') {
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        pc.onicecandidate = e => {
+          if (e.candidate) ws.send(JSON.stringify({ type: 'signal', target: msg.from, data: { type: 'candidate', candidate: e.candidate } }));
+        };
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: 'signal', target: msg.from, data: answer }));
+      } else if (data.type === 'candidate') {
+        // handled by pc above
+      }
+    }
+  };
+  setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
+  ws.onclose = () => { setTimeout(connectSignaling, 3000); };
+}
+</script>
+</body>
+</html>
