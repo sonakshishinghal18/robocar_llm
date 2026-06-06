@@ -89,35 +89,41 @@ async def drive(p: Prompt):
 
 @app.post("/vision")
 async def vision(req: VisionRequest):
-    """Analyze camera frame — returns movement command + narration"""
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
+    """Analyze camera frame using Groq Llama 4 Scout Vision"""
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not set")
     async with httpx.AsyncClient(timeout=20) as client:
         res = await client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
             json={
-                "contents": [{
-                    "parts": [
-                        {"text": VISION_PROMPT},
-                        {"inline_data": {"mime_type": "image/jpeg", "data": req.image}}
-                    ]
-                }],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 200}
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": VISION_PROMPT},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{req.image}"}}
+                        ]
+                    }
+                ],
+                "temperature": 0.1,
+                "max_tokens": 200
             }
         )
         data = res.json()
-        # Debug: log full response
-        print("Gemini response:", json.dumps(data)[:500])
-        if "candidates" not in data:
-            raise HTTPException(status_code=500, detail=f"Gemini error: {json.dumps(data)}")
-        raw = data["candidates"][0]["content"]["parts"][0]["text"]
+        print("Groq vision:", json.dumps(data)[:300])
+        if "choices" not in data:
+            raise HTTPException(status_code=500, detail=f"Groq error: {json.dumps(data)}")
+        raw = data["choices"][0]["message"]["content"]
         clean = raw.replace("```json", "").replace("```", "").strip()
-        # Handle case where Gemini returns non-JSON
         try:
             result = json.loads(clean)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail=f"Gemini non-JSON response: {clean}")
+            raise HTTPException(status_code=500, detail=f"Non-JSON: {clean}")
         return result
 
 @app.websocket("/signal")
