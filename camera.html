@@ -104,7 +104,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.3.4</div>
+<div class="version">robocar v1.4.0</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -187,10 +187,12 @@ async function runVision() {
       // Execute move for 300ms then auto-stop
       sendCmd(data.cmd);
       setStatus('🤖 ' + (cmdLabel[data.cmd] || data.cmd), 'active');
-      // Only speak when command changes
-      if (data.narration && data.cmd !== lastVisionCmd) {
+      // Only speak when Gemini says scene changed (narrate: true)
+      if (data.narrate && data.narration) {
         setNarration(data.narration);
         speak(data.narration);
+      } else if (!data.narrate) {
+        // Keep last narration on screen, don't speak
       }
       lastVisionCmd = data.cmd;
       // Auto-insert Stop after 300ms for any movement command
