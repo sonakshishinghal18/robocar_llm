@@ -104,7 +104,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.3.2</div>
+<div class="version">robocar v1.3.4</div>
 
 <script>
 const BACKEND   = 'https://robocar-llm.onrender.com';
@@ -113,7 +113,7 @@ const CAM_ID    = 'robocar-cam';
 const ROBOT_IP  = '192.168.0.101';
 
 let stream = null, ws = null;
-let autoMode = false, autoInterval = null;
+let autoMode = false, autoInterval = null; // autoInterval kept for stopCamera cleanup
 let isProcessing = false, isSpeaking = false;
 let recognition = null, listening = false;
 let lastVisionCmd = null;
@@ -183,19 +183,29 @@ async function runVision() {
     clearTimeout(timeout);
     const data = await res.json();
     if (data.cmd) {
+      const cmdLabel = {F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right',S:'Stopping'};
+      // Execute move for 300ms then auto-stop
       sendCmd(data.cmd);
-      setStatus('🤖 Auto — ' + ({F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right',S:'Stopping'}[data.cmd] || data.cmd), 'active');
-      // Only speak narration when command changes (avoids cutting off speech)
+      setStatus('🤖 ' + (cmdLabel[data.cmd] || data.cmd), 'active');
+      // Only speak when command changes
       if (data.narration && data.cmd !== lastVisionCmd) {
         setNarration(data.narration);
         speak(data.narration);
       }
       lastVisionCmd = data.cmd;
+      // Auto-insert Stop after 300ms for any movement command
+      if (data.cmd !== 'S') {
+        setTimeout(() => {
+          sendCmd('S');
+          setMotor('S', true);
+        }, 800);
+      }
     }
   } catch(e) {
     setNarration('Vision error — retrying…');
   }
   isProcessing = false;
+  scheduleNextVision();
 }
 
 // Voice command
@@ -265,18 +275,26 @@ async function runVoiceCommand(text) {
 }
 
 // Toggle autonomous mode
+function scheduleNextVision() {
+  if (!autoMode) return;
+  // Wait 300ms (stop duration) + small buffer before next call
+  setTimeout(() => {
+    if (autoMode) runVision();
+  }, 1200);
+}
+
 function toggleAuto() {
   autoMode = !autoMode;
   const btn = document.getElementById('auto-btn');
   if (autoMode) {
     btn.textContent = '🤖 Auto ON';
     btn.classList.add('on');
-    setStatus('🤖 Autonomous — analyzing every 2s', 'active');
-    autoInterval = setInterval(runVision, 2000);
+    setStatus('🤖 Autonomous — move→stop→decide', 'active');
+    runVision(); // Start immediately
   } else {
     btn.textContent = '🤖 Auto OFF';
     btn.classList.remove('on');
-    clearInterval(autoInterval);
+    if (autoInterval) clearInterval(autoInterval);
     sendCmd('S');
     setStatus('📷 Camera on', 'active');
     setNarration('Autonomous mode stopped.');
