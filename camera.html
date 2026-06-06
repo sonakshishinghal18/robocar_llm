@@ -15,6 +15,11 @@
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     pointer-events: none; z-index: 10;
   }
+  .version {
+    position: absolute; bottom: 8px; right: 12px;
+    font-size: 10px; color: rgba(255,255,255,0.3);
+    font-family: monospace; pointer-events: none;
+  }
   .top-bar {
     position: absolute; top: 0; left: 0; right: 0;
     padding: 20px 16px 40px;
@@ -66,6 +71,7 @@
     <button class="btn btn-auto" id="auto-btn" onclick="toggleAuto()" style="display:none">🤖 Auto OFF</button>
   </div>
 </div>
+<div class="version">robocar v1.0.0</div>
 
 <script>
 const BACKEND = 'https://robocar-llm.onrender.com';
@@ -100,11 +106,11 @@ function speak(text) {
 function captureFrame() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  canvas.width = 640;
-  canvas.height = 480;
+  canvas.width = 320;
+  canvas.height = 240;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, 640, 480);
-  const dataURL = canvas.toDataURL('image/jpeg', 0.7);
+  ctx.drawImage(video, 0, 0, 320, 240);
+  const dataURL = canvas.toDataURL('image/jpeg', 0.5);
   return dataURL.split(',')[1]; // base64 only
 }
 
@@ -125,11 +131,15 @@ async function runVision() {
   isProcessing = true;
   try {
     const image = captureFrame();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(BACKEND + '/vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image })
+      body: JSON.stringify({ image }),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
     const data = await res.json();
     if (data.cmd) await sendCmd(data.cmd);
     if (data.narration) {
@@ -137,7 +147,7 @@ async function runVision() {
       speak(data.narration);
     }
   } catch(e) {
-    setNarration('Vision error: ' + e.message);
+    setNarration('Vision error: ' + e.message + ' — retrying...');
   }
   isProcessing = false;
 }
