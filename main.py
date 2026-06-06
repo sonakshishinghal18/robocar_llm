@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import httpx
 import os
 import json
+import base64
 from typing import Dict
 
 app = FastAPI()
@@ -16,19 +17,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-SYSTEM_PROMPT = """You control a robot car. Convert the user instruction into a JSON array of commands.
+DRIVE_PROMPT = """You control a robot car. Convert the user instruction into a JSON array of commands.
 Each command: {"cmd": "F"|"B"|"L"|"R"|"S", "duration": milliseconds}
 F=forward, B=backward, L=left turn, R=right turn, S=stop.
 Default duration: 1000ms for moves, 600ms for turns, 300ms for stops.
 Respond with ONLY the JSON array, no explanation, no markdown backticks.
 Example: [{"cmd":"F","duration":2000},{"cmd":"L","duration":600},{"cmd":"S","duration":300}]"""
 
+VISION_PROMPT = """You are the brain of an autonomous robot car. Analyze this image and respond with JSON only.
+
+Return exactly this format:
+{
+  "cmd": "F" or "B" or "L" or "R" or "S",
+  "duration": milliseconds (300-1500),
+  "narration": "one sentence describing what you see and what you are doing in simple Hindi (Devanagari script)"
+}
+
+Rules:
+- If path is clear ahead → cmd F, duration 1000
+- If obstacle close ahead → cmd L or R (choose based on more open space), duration 600
+- If obstacle very close → cmd S, duration 500
+- If unsure → cmd S
+- Keep narration short, friendly, first person, in Hindi using Devanagari script. Example: "आगे रास्ता साफ है, आगे बढ़ रहा हूं।" or "सामने दीवार है, बाईं तरफ मुड़ रहा हूं।"
+- Respond with ONLY the JSON, no markdown, no explanation."""
+
 class Prompt(BaseModel):
     text: str
 
-# WebSocket signaling for WebRTC camera
+class VisionRequest(BaseModel):
+    image: str  # base64 encoded JPEG
+
+# WebSocket signaling peers
 connected_peers: Dict[str, WebSocket] = {}
 
 @app.get("/")
@@ -37,7 +59,6 @@ def root():
 
 @app.get("/relay")
 async def relay(ip: str, v: str):
-    """Relay motor command to ESP32 — allows HTTPS page to control HTTP device"""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             res = await client.get(f"http://{ip}/cmd?v={v}")
@@ -56,7 +77,7 @@ async def drive(p: Prompt):
             json={
                 "model": "llama-3.3-70b-versatile",
                 "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": DRIVE_PROMPT},
                     {"role": "user", "content": p.text}
                 ],
                 "temperature": 0.2
@@ -65,6 +86,31 @@ async def drive(p: Prompt):
         data = res.json()
         content = data["choices"][0]["message"]["content"]
         return {"result": content}
+
+@app.post("/vision")
+async def vision(req: VisionRequest):
+    """Analyze camera frame — returns movement command + narration"""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
+    async with httpx.AsyncClient(timeout=20) as client:
+        res = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{
+                    "parts": [
+                        {"text": VISION_PROMPT},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": req.image}}
+                    ]
+                }],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 200}
+            }
+        )
+        data = res.json()
+        raw = data["candidates"][0]["content"]["parts"][0]["text"]
+        clean = raw.replace("```json", "").replace("```", "").strip()
+        result = json.loads(clean)
+        return result
 
 @app.websocket("/signal")
 async def websocket_signal(websocket: WebSocket):
