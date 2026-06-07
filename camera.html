@@ -12,28 +12,17 @@
   video { width: 100vw; height: 100vh; object-fit: cover; }
   canvas { display: none; }
 
-  .overlay {
-    position: fixed; inset: 0; pointer-events: none; z-index: 10;
-  }
+  .overlay { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 
-  /* Top bar */
   .top-bar {
     position: absolute; top: 0; left: 0; right: 0;
     padding: 50px 20px 30px;
     background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
     pointer-events: all;
   }
-  .status {
-    font-size: 15px; font-weight: 600; margin-bottom: 6px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .status-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #636370; flex-shrink: 0;
-    transition: background 0.3s;
-  }
+  .status { font-size: 15px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #636370; flex-shrink: 0; transition: background 0.3s; }
   .status-dot.active { background: #30d158; box-shadow: 0 0 6px #30d15880; animation: pulse 1.5s infinite; }
-  .status-dot.listening { background: #ff453a; animation: pulse 0.6s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
   .narration {
@@ -42,8 +31,9 @@
     padding: 10px 14px; margin-top: 8px;
     min-height: 22px; border-left: 3px solid #1c86f5;
   }
+  .motor-status { margin-top: 8px; font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+  .duration-info { font-size: 11px; color: #8e8e93; margin-top: 4px; }
 
-  /* Bottom bar */
   .bottom-bar {
     position: absolute; bottom: 0; left: 0; right: 0;
     padding: 30px 20px 50px;
@@ -51,9 +41,7 @@
     display: flex; flex-direction: column; gap: 12px;
     pointer-events: all;
   }
-
   .btn-row { display: flex; gap: 10px; }
-
   .btn {
     flex: 1; padding: 14px; border-radius: 16px; border: none;
     font-size: 14px; font-weight: 600; cursor: pointer;
@@ -61,15 +49,10 @@
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .btn:active { opacity: 0.7; transform: scale(0.97); }
-  .btn-start  { background: #1c86f5; color: #fff; }
-  .btn-auto   { background: #1e3a1e; color: #30d158; border: 1px solid #30d158; }
+  .btn-start { background: #1c86f5; color: #fff; }
+  .btn-auto { background: #1e3a1e; color: #30d158; border: 1px solid #30d158; }
   .btn-auto.on { background: #30d158; color: #000; }
-
-  .heard-text {
-    font-size: 12px; color: #aeaeb2; text-align: center;
-    min-height: 16px; padding: 0 10px;
-  }
-
+  .heard-text { font-size: 12px; color: #aeaeb2; text-align: center; min-height: 16px; padding: 0 10px; }
   .version {
     position: absolute; bottom: 8px; right: 12px;
     font-size: 10px; color: rgba(255,255,255,0.25);
@@ -88,14 +71,14 @@
       <span id="status-text">Tap Start to begin</span>
     </div>
     <div class="narration" id="narration">—</div>
-    <div style="margin-top:8px; font-size:18px; font-weight:700; letter-spacing:2px;" id="motor-status">—</div>
+    <div class="motor-status" id="motor-status">—</div>
+    <div class="duration-info" id="duration-info"></div>
   </div>
 
   <div class="bottom-bar">
     <div class="heard-text" id="heard-text"></div>
     <div class="btn-row" id="control-btns">
       <button class="btn btn-auto" id="auto-btn" onclick="toggleAuto()" style="display:none">🤖 Auto OFF</button>
-
     </div>
     <div class="btn-row">
       <button class="btn" id="stop-cam-btn" onclick="stopCamera()" style="display:none; background:#1a1a26; color:#ff453a; border:1px solid #ff453a;">⏹ Stop Camera</button>
@@ -104,53 +87,93 @@
   </div>
 </div>
 
-<div class="version">robocar v1.4.2</div>
+<div class="version">robocar v1.5.0</div>
 
 <script>
-const BACKEND   = 'https://robocar-llm.onrender.com';
-const SIGNAL    = 'wss://robocar-llm.onrender.com/signal';
-const CAM_ID    = 'robocar-cam';
-const ROBOT_IP  = '192.168.0.101';
+const BACKEND = 'https://robocar-llm.onrender.com';
+const SIGNAL  = 'wss://robocar-llm.onrender.com/signal';
+const CAM_ID  = 'robocar-cam';
+const ROBOT_IP = '192.168.0.101';
 
 let stream = null, ws = null;
-let autoMode = false, autoInterval = null; // autoInterval kept for stopCamera cleanup
-let isProcessing = false, isSpeaking = false;
-let recognition = null, listening = false;
+let autoMode = false, autoInterval = null;
+let isProcessing = false;
 let lastVisionCmd = null;
-
-function setMotor(cmd, ok) {
-  const labels = { F:'⬆ Forward', B:'⬇ Back', L:'⬅ Left', R:'➡ Right', S:'⏹ Stop' };
-  document.getElementById('motor-status').textContent = labels[cmd] || cmd;
-  document.getElementById('motor-status').style.color = cmd === 'S' ? '#ff453a' : '#30d158';
-}
+let audioCtx = null;
 
 function setStatus(msg, state) {
   document.getElementById('status-text').textContent = msg;
-  const dot = document.getElementById('status-dot');
-  dot.className = 'status-dot' + (state ? ' ' + state : '');
+  document.getElementById('status-dot').className = 'status-dot' + (state ? ' ' + state : '');
 }
 function setNarration(msg) { document.getElementById('narration').textContent = msg; }
 function setHeard(msg) { document.getElementById('heard-text').textContent = msg; }
+function setMotor(cmd) {
+  const labels = { F:'⬆ Forward', B:'⬇ Back', L:'⬅ Left', R:'➡ Right', S:'⏹ Stop' };
+  const el = document.getElementById('motor-status');
+  el.textContent = labels[cmd] || cmd;
+  el.style.color = cmd === 'S' ? '#ff453a' : '#30d158';
+}
+function setDuration(ms) {
+  document.getElementById('duration-info').textContent = ms ? `Duration: ${ms}ms` : '';
+}
 
-// TTS — Hindi
-function speak(text) {
-  if (!text) return;
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = 'hi-IN';
-  utt.rate = 1.1;
-  isSpeaking = true;
-  utt.onend = utt.onerror = () => { isSpeaking = false; };
-  window.speechSynthesis.speak(utt);
+// Convert base64 PCM L16 to playable WAV
+function pcmToWav(base64Pcm, sampleRate = 24000) {
+  const pcmBytes = Uint8Array.from(atob(base64Pcm), c => c.charCodeAt(0));
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const dataSize = pcmBytes.length;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  function writeString(offset, str) { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); }
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+  new Uint8Array(buffer, 44).set(pcmBytes);
+  return buffer;
+}
+
+// Play TTS audio from Gemini
+async function playTTS(text) {
+  try {
+    const res = await fetch(BACKEND + '/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (data.audio) {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const wavBuffer = pcmToWav(data.audio);
+      const audioBuffer = await audioCtx.decodeAudioData(wavBuffer);
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+      source.start(0);
+    }
+  } catch(e) {
+    console.log('TTS error:', e.message);
+  }
 }
 
 // Send motor command via WebSocket → Mac Chrome → ESP32
 function sendCmd(cmd) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'motor', cmd: cmd }));
-    setMotor(cmd, true);
-  } else {
-    setHeard('WebSocket not connected');
+    setMotor(cmd);
   }
 }
 
@@ -165,9 +188,7 @@ function captureFrame() {
 
 // Vision loop
 async function runVision() {
-  setNarration('Vision running… ' + new Date().toLocaleTimeString());
-  if (isProcessing) { setNarration('Skipped — still processing'); return; }
-  if (!autoMode) { setNarration('Skipped — auto off'); return; }
+  if (isProcessing || !autoMode) return;
   isProcessing = true;
   try {
     const frame = captureFrame();
@@ -182,27 +203,30 @@ async function runVision() {
     });
     clearTimeout(timeout);
     const data = await res.json();
+
     if (data.cmd) {
-      const cmdLabel = {F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right',S:'Stopping'};
-      // Execute move for 300ms then auto-stop
-      sendCmd(data.cmd);
+      const duration = data.duration || 800;
+      const cmdLabel = {F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right'};
       setStatus('🤖 ' + (cmdLabel[data.cmd] || data.cmd), 'active');
-      // Speak when narration exists and command changed
-      if (data.narration && data.cmd !== lastVisionCmd) {
-        setNarration(data.narration);
-        speak(data.narration);
-      } else if (data.narration) {
-        setNarration(data.narration); // Update text on screen silently
-      }
-      lastVisionCmd = data.cmd;
-      // Auto-insert Stop after 300ms for any movement command
-      if (data.cmd !== 'S') {
-        setTimeout(() => {
-          sendCmd('S');
-          setMotor('S', true);
-        }, 800);
-      }
+      setDuration(duration);
+
+      // Execute move for dynamic duration then auto-stop
+      sendCmd(data.cmd);
+      setTimeout(() => {
+        sendCmd('S');
+        setMotor('S');
+      }, duration);
     }
+
+    // Narration + TTS (non-blocking, runs in parallel)
+    if (data.speak && data.narration) {
+      setNarration(data.narration);
+      playTTS(data.narration); // Gemini TTS — runs async
+    } else if (data.narration) {
+      setNarration(data.narration);
+    }
+
+    lastVisionCmd = data.cmd;
   } catch(e) {
     setNarration('Vision error — retrying…');
   }
@@ -210,112 +234,45 @@ async function runVision() {
   scheduleNextVision();
 }
 
-// Voice command
-function toggleVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { setHeard('Mic not supported'); return; }
-  if (listening) { recognition && recognition.stop(); return; }
-
-  recognition = new SR();
-  recognition.lang = 'hi-IN';
-  recognition.interimResults = false;
-
-  recognition.onstart = () => {
-    listening = true;
-    setStatus('🎤 Listening…', 'listening');
-    document.getElementById('voice-btn').classList.add('listening');
-    document.getElementById('voice-btn').textContent = '🎤 Listening…';
-    if (autoMode) toggleAuto(); // pause auto while listening
-  };
-
-  recognition.onend = () => {
-    listening = false;
-    document.getElementById('voice-btn').classList.remove('listening');
-    document.getElementById('voice-btn').textContent = '🎤 Speak';
-    setStatus('📷 Camera on', 'active');
-  };
-
-  recognition.onresult = async (e) => {
-    const text = e.results[0][0].transcript;
-    setHeard('🎤 "' + text + '"');
-    setNarration('Processing: ' + text);
-    await runVoiceCommand(text);
-  };
-
-  recognition.onerror = (e) => setHeard('Mic error: ' + e.error);
-  recognition.start();
-}
-
-async function runVoiceCommand(text) {
-  try {
-    setStatus('🧠 Thinking…', 'active');
-    const res = await fetch(BACKEND + '/drive', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    });
-    const data = await res.json();
-    const raw = data.result || '';
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const cmds = JSON.parse(clean);
-
-    const labelMap = { F:'आगे', B:'पीछे', L:'बाएं', R:'दाएं', S:'रुको' };
-    const narration = 'ठीक है! ' + cmds.map(c => labelMap[c.cmd] + ' ' + (c.duration/1000).toFixed(1) + ' सेकंड').join(', ');
-    setNarration(narration);
-    speak(narration);
-
-    setStatus('▶ Executing…', 'active');
-    for (const step of cmds) {
-      await sendCmd(step.cmd);
-      await new Promise(r => setTimeout(r, step.duration));
-    }
-    await sendCmd('S');
-    setStatus('✅ Done', 'active');
-  } catch(e) {
-    setNarration('Error: ' + e.message);
-  }
-}
-
-// Toggle autonomous mode
 function scheduleNextVision() {
   if (!autoMode) return;
-  // Wait 300ms (stop duration) + small buffer before next call
   setTimeout(() => {
     if (autoMode) runVision();
   }, 1200);
 }
 
+// Toggle autonomous mode
 function toggleAuto() {
   autoMode = !autoMode;
   const btn = document.getElementById('auto-btn');
   if (autoMode) {
     btn.textContent = '🤖 Auto ON';
     btn.classList.add('on');
-    setStatus('🤖 Autonomous — move→stop→decide', 'active');
-    runVision(); // Start immediately
+    setStatus('🤖 Autonomous — dynamic speed', 'active');
+    // Unlock audio context
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+    runVision();
   } else {
     btn.textContent = '🤖 Auto OFF';
     btn.classList.remove('on');
-    if (autoInterval) clearInterval(autoInterval);
     sendCmd('S');
     setStatus('📷 Camera on', 'active');
     setNarration('Autonomous mode stopped.');
+    setDuration('');
   }
 }
 
-// Start camera + WebRTC
+// Start camera
 async function startCamera() {
-  // Unlock audio context on user gesture
-  const utt = new SpeechSynthesisUtterance('');
-  window.speechSynthesis.speak(utt);
   document.getElementById('start-btn').style.display = 'none';
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
     });
-    setStatus('📷 Camera on', 'active');
     document.getElementById('video').srcObject = stream;
+    setStatus('📷 Camera on', 'active');
     document.getElementById('auto-btn').style.display = 'flex';
     document.getElementById('stop-cam-btn').style.display = 'flex';
     connectSignaling();
@@ -328,10 +285,8 @@ async function startCamera() {
 // Stop camera
 function stopCamera() {
   if (autoMode) toggleAuto();
-  if (listening) recognition && recognition.stop();
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (ws) ws.close();
-  window.speechSynthesis.cancel();
   sendCmd('S');
   document.getElementById('video').srcObject = null;
   document.getElementById('auto-btn').style.display = 'none';
@@ -339,6 +294,7 @@ function stopCamera() {
   document.getElementById('start-btn').style.display = 'block';
   setStatus('Camera off', '');
   setNarration('—');
+  setDuration('');
 }
 
 // WebRTC signaling for Mac viewer
