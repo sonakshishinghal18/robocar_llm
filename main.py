@@ -26,36 +26,36 @@ Default duration: 1000ms for moves, 600ms for turns, 300ms for stops.
 Respond with ONLY the JSON array, no explanation, no markdown backticks.
 Example: [{"cmd":"F","duration":2000},{"cmd":"L","duration":600},{"cmd":"S","duration":300}]"""
 
-VISION_PROMPT = """You are a robot car brain. Camera faces forward only — you cannot see left/right directly.
-Reply ONLY JSON: {"cmd":"F/B/L/R","duration":800,"narration":"Hindi"}
-Note: Never use S — code automatically stops after every command.
+VISION_PROMPT = """You are a robot car brain. Camera faces forward (standard 1x lens).
+Reply ONLY JSON:
+{"cmd":"F/B/L/R","duration":200-1500,"speak":true/false,"narration":"Hindi or empty"}
 
-DECISION RULES (follow in order):
+MOVEMENT RULES:
+1. Clear path, no obstacle visible → cmd F, duration 1200-1500
+2. Something far ahead (>1 meter away) → cmd F, duration 600-800
+3. Obstacle at medium distance (35cm-1m) → decide turn direction:
+   - Left 20% of image more open → cmd L, duration 400
+   - Right 20% of image more open → cmd R, duration 400
+   - Both sides blocked → cmd B, duration 400
+4. Obstacle very close (<35cm, fills >60% of frame) → cmd B, duration 300
+5. Unsure → cmd B, duration 300
+Note: Code automatically stops after every command. Never use S.
 
-1. CLEAR PATH → F
-   Floor visible for >50% of bottom half, no object blocking center → cmd F
+SPEAK FIELD — you decide freely:
+- speak: true → when you see something new, interesting, funny, or dangerous
+  Examples: new object appeared, path changed, something unexpected, direction changed
+- speak: false → boring/repetitive (same clear path, same obstacle still there)
+- You are free to decide. Be creative about when to talk.
 
-2. OBSTACLE AHEAD → use image EDGES to decide turn direction:
-   - Look at LEFT edge of image: is it open/bright/floor visible?
-   - Look at RIGHT edge of image: is it open/bright/floor visible?
-   - More open on LEFT edge → cmd L
-   - More open on RIGHT edge → cmd R
-   - Both edges blocked → cmd B (back up to create space)
-
-3. VERY CLOSE OBSTACLE (fills >70% of frame) → cmd S
-
-4. STUCK/UNSURE → cmd B (backing up always creates new options)
-
-5. NEVER stay stopped — after S, always follow with L, R or B next call
-
-DURATION: Always 300ms for all commands.
-
-NARRATION: 1 short Hindi sentence, mix randomly:
-- Bollywood: "अरे बाप रे! सामने कुर्सी है, दाएं जाता हूं!"
-- Sarcastic: "किसने यहाँ सोफा रख दिया? बाएं निकलता हूं!"
-- Curious: "दाईं तरफ जगह दिख रही है, चलो वहाँ!"
-- Confident: "रास्ता साफ है, फुल स्पीड आगे!"
-- Name the object you see (chair, wall, sofa, door, table, person, box)
+NARRATION (only when speak:true):
+- 1 short Hindi sentence in Devanagari, fun personality:
+  * Bollywood: "अरे बाप रे! ये तो सोफा है!"
+  * Sarcastic: "किसने यहाँ जूता रख दिया भाई?"
+  * Curious: "ये क्या चीज़ है? देखते हैं!"
+  * Confident: "रास्ता साफ है, चल पड़े!"
+  * Funny: "मैं तो फंस गया भाई, पीछे हटता हूं!"
+- Name specific objects. Be creative, never repeat.
+- When speak:false, set narration to ""
 
 ONLY JSON. No markdown."""
 
@@ -65,11 +65,14 @@ class Prompt(BaseModel):
 class VisionRequest(BaseModel):
     image: str
 
+class TTSRequest(BaseModel):
+    text: str
+
 connected_peers: Dict[str, WebSocket] = {}
 
 @app.get("/")
 def root():
-    return {"status": "Robocar API online v1.3.2"}
+    return {"status": "Robocar API online v1.5.0"}
 
 @app.get("/relay")
 async def relay(ip: str, v: str):
@@ -103,7 +106,7 @@ async def drive(p: Prompt):
 
 @app.post("/vision")
 async def vision(req: VisionRequest):
-    """Analyze camera frame using Gemini 2.5 Flash-Lite"""
+    """Analyze camera frame using Gemini 2.5 Flash"""
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
     async with httpx.AsyncClient(timeout=10) as client:
@@ -127,7 +130,7 @@ async def vision(req: VisionRequest):
             }
         )
         data = res.json()
-        print("Gemini:", json.dumps(data)[:300])
+        print("Vision:", json.dumps(data)[:300])
         if "candidates" not in data:
             raise HTTPException(status_code=500, detail=f"Gemini error: {json.dumps(data)[:200]}")
         raw = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -137,6 +140,37 @@ async def vision(req: VisionRequest):
         except json.JSONDecodeError:
             raise HTTPException(status_code=500, detail=f"Non-JSON: {clean[:100]}")
         return result
+
+@app.post("/tts")
+async def tts(req: TTSRequest):
+    """Generate Hindi speech audio using Gemini Flash TTS"""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
+    async with httpx.AsyncClient(timeout=15) as client:
+        res = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"role": "user", "parts": [{"text": req.text}]}],
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": "Puck"
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        data = res.json()
+        print("TTS:", json.dumps(data)[:200])
+        if "candidates" not in data:
+            raise HTTPException(status_code=500, detail=f"TTS error: {json.dumps(data)[:200]}")
+        audio_data = data["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
+        mime_type = data["candidates"][0]["content"]["parts"][0]["inlineData"]["mimeType"]
+        return {"audio": audio_data, "mimeType": mime_type}
 
 @app.websocket("/signal")
 async def websocket_signal(websocket: WebSocket):
