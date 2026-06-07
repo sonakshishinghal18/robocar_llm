@@ -64,6 +64,7 @@ class Prompt(BaseModel):
 
 class VisionRequest(BaseModel):
     image: str
+    canSpeak: bool = False
 
 class TTSRequest(BaseModel):
     text: str
@@ -109,6 +110,10 @@ async def vision(req: VisionRequest):
     """Analyze camera frame using Gemini 2.5 Flash"""
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
+    # Add canSpeak context to prompt
+    speak_instruction = "NARRATION ALLOWED: You may set speak:true if something worth saying." if req.canSpeak else "NARRATION BLOCKED: Set speak:false and narration:\"\" — audio is busy or too soon."
+    prompt_with_context = VISION_PROMPT + f"\n\n{speak_instruction}"
+
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
@@ -116,7 +121,7 @@ async def vision(req: VisionRequest):
             json={
                 "contents": [{
                     "parts": [
-                        {"text": VISION_PROMPT},
+                        {"text": prompt_with_context},
                         {"inline_data": {"mime_type": "image/jpeg", "data": req.image}}
                     ]
                 }],
@@ -130,7 +135,7 @@ async def vision(req: VisionRequest):
             }
         )
         data = res.json()
-        print("Vision:", json.dumps(data)[:300])
+        print("Vision:", json.dumps(data)[:200])
         if "candidates" not in data:
             raise HTTPException(status_code=500, detail=f"Gemini error: {json.dumps(data)[:200]}")
         raw = data["candidates"][0]["content"]["parts"][0]["text"]
