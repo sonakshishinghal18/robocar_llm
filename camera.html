@@ -87,7 +87,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.5.0</div>
+<div class="version">robocar v1.5.1</div>
 
 <script>
 const BACKEND = 'https://robocar-llm.onrender.com';
@@ -100,6 +100,9 @@ let autoMode = false, autoInterval = null;
 let isProcessing = false;
 let lastVisionCmd = null;
 let audioCtx = null;
+let isPlayingAudio = false;
+let lastSpokenTime = 0;
+const MIN_SPEAK_INTERVAL = 5000; // minimum 5 seconds between narrations
 
 function setStatus(msg, state) {
   document.getElementById('status-text').textContent = msg;
@@ -146,8 +149,13 @@ function pcmToWav(base64Pcm, sampleRate = 24000) {
   return buffer;
 }
 
-// Play TTS audio from Gemini
+// Play TTS audio from Gemini — one at a time, max 1 per 5 seconds
 async function playTTS(text) {
+  const now = Date.now();
+  // Skip if already playing or spoke too recently
+  if (isPlayingAudio || (now - lastSpokenTime) < MIN_SPEAK_INTERVAL) return;
+  isPlayingAudio = true;
+  lastSpokenTime = now;
   try {
     const res = await fetch(BACKEND + '/tts', {
       method: 'POST',
@@ -162,10 +170,14 @@ async function playTTS(text) {
       const source = audioCtx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioCtx.destination);
+      source.onended = () => { isPlayingAudio = false; };
       source.start(0);
+    } else {
+      isPlayingAudio = false;
     }
   } catch(e) {
     console.log('TTS error:', e.message);
+    isPlayingAudio = false;
   }
 }
 
@@ -195,10 +207,12 @@ async function runVision() {
     setNarration('📸 Analyzing…');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeSinceSpoken = Date.now() - lastSpokenTime;
+    const canSpeak = !isPlayingAudio && timeSinceSpoken >= MIN_SPEAK_INTERVAL;
     const res = await fetch(BACKEND + '/vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: frame }),
+      body: JSON.stringify({ image: frame, canSpeak }),
       signal: controller.signal
     });
     clearTimeout(timeout);
