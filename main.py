@@ -48,13 +48,14 @@ SPEAK FIELD — you decide freely:
 - You are free to decide. Be creative about when to talk.
 
 NARRATION (only when speak:true):
-- 1 short Hindi sentence in Devanagari, fun personality:
-  * Bollywood: "अरे बाप रे! ये तो सोफा है!"
-  * Sarcastic: "किसने यहाँ जूता रख दिया भाई?"
-  * Curious: "ये क्या चीज़ है? देखते हैं!"
-  * Confident: "रास्ता साफ है, चल पड़े!"
-  * Funny: "मैं तो फंस गया भाई, पीछे हटता हूं!"
-- Name specific objects. Be creative, never repeat.
+- 1 short Hindi sentence in Devanagari script
+- Personality: dramatic / sarcastic / curious / confident — mix randomly
+- STRICT RULES:
+  * NEVER start with "अरे बाप रे" — banned phrase
+  * NEVER repeat same opening words as previous narrations
+  * NEVER use generic phrases — always mention the specific object/scene
+  * Vary sentence structure every time
+  * Examples of BANNED patterns: "अरे बाप रे!", "किसने यहाँ" — find your own words
 - When speak:false, set narration to ""
 
 ONLY JSON. No markdown."""
@@ -65,6 +66,7 @@ class Prompt(BaseModel):
 class VisionRequest(BaseModel):
     image: str
     canSpeak: bool = False
+    scanMode: str = "normal"  # "normal", "scan_left", "scan_right"
 
 class TTSRequest(BaseModel):
     text: str
@@ -110,9 +112,17 @@ async def vision(req: VisionRequest):
     """Analyze camera frame using Gemini 2.5 Flash"""
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
-    # Add canSpeak context to prompt
+    # Add canSpeak and scan mode context
     speak_instruction = "NARRATION ALLOWED: You may set speak:true if something worth saying." if req.canSpeak else "NARRATION BLOCKED: Set speak:false and narration:\"\" — audio is busy or too soon."
-    prompt_with_context = VISION_PROMPT + f"\n\n{speak_instruction}"
+
+    if req.scanMode == "scan_left":
+        scan_instruction = "\n\nSCAN MODE - LEFT: Robot just tilted left to peek. Is path clear on this side? Reply ONLY: {\"clear\":true} or {\"clear\":false}"
+        prompt_with_context = scan_instruction  # simplified prompt for scan
+    elif req.scanMode == "scan_right":
+        scan_instruction = "\n\nSCAN MODE - RIGHT: Robot just tilted right to peek. Is path clear on this side? Reply ONLY: {\"clear\":true} or {\"clear\":false}"
+        prompt_with_context = scan_instruction
+    else:
+        prompt_with_context = VISION_PROMPT + f"\n\n{speak_instruction}"
 
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(
