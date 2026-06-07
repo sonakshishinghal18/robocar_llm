@@ -87,7 +87,7 @@
   </div>
 </div>
 
-<div class="version">robocar v1.5.1</div>
+<div class="version">robocar v1.5.2</div>
 
 <script>
 const BACKEND = 'https://robocar-llm.onrender.com';
@@ -152,8 +152,8 @@ function pcmToWav(base64Pcm, sampleRate = 24000) {
 // Play TTS audio from Gemini — one at a time, max 1 per 5 seconds
 async function playTTS(text) {
   const now = Date.now();
-  // Skip if already playing or spoke too recently
   if (isPlayingAudio || (now - lastSpokenTime) < MIN_SPEAK_INTERVAL) return;
+  // Lock immediately before any async operation
   isPlayingAudio = true;
   lastSpokenTime = now;
   try {
@@ -165,8 +165,11 @@ async function playTTS(text) {
     const data = await res.json();
     if (data.audio) {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      await audioCtx.resume();
       const wavBuffer = pcmToWav(data.audio);
-      const audioBuffer = await audioCtx.decodeAudioData(wavBuffer);
+      // Clone buffer before decode to avoid detachment issues
+      const wavCopy = wavBuffer.slice(0);
+      const audioBuffer = await audioCtx.decodeAudioData(wavCopy);
       const source = audioCtx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioCtx.destination);
@@ -198,6 +201,29 @@ function captureFrame() {
   return canvas.toDataURL('image/jpeg', 0.65).split(',')[1];
 }
 
+// Scan one direction — returns true if clear
+async function scanDirection(direction) {
+  try {
+    // Turn to peek
+    sendCmd(direction);
+    await new Promise(r => setTimeout(r, 200));
+    sendCmd('S');
+    await new Promise(r => setTimeout(r, 150)); // settle
+
+    // Capture and analyze
+    const frame = captureFrame();
+    const res = await fetch(BACKEND + '/vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: frame, canSpeak: false, scanMode: direction === 'L' ? 'scan_left' : 'scan_right' })
+    });
+    const data = await res.json();
+    return data.clear === true;
+  } catch(e) {
+    return false;
+  }
+}
+
 // Vision loop
 async function runVision() {
   if (isProcessing || !autoMode) return;
@@ -219,13 +245,44 @@ async function runVision() {
     const data = await res.json();
 
     if (data.cmd) {
+      let finalCmd = data.cmd;
       const duration = data.duration || 800;
+
+      // If Gemini wants to go back, first do tilt scan
+      if (data.cmd === 'B') {
+        setStatus('🔍 Scanning left…', 'active');
+        const leftClear = await scanDirection('L');
+        if (leftClear) {
+          finalCmd = 'L';
+          setStatus('🤖 Path left is clear!', 'active');
+        } else {
+          setStatus('🔍 Scanning right…', 'active');
+          // Turn back to center first
+          sendCmd('R');
+          await new Promise(r => setTimeout(r, 200));
+          sendCmd('S');
+          await new Promise(r => setTimeout(r, 150));
+          const rightClear = await scanDirection('R');
+          if (rightClear) {
+            finalCmd = 'R';
+            setStatus('🤖 Path right is clear!', 'active');
+          } else {
+            // Both blocked — turn back to center and go back
+            sendCmd('L');
+            await new Promise(r => setTimeout(r, 200));
+            sendCmd('S');
+            await new Promise(r => setTimeout(r, 150));
+            finalCmd = 'B';
+            setStatus('🤖 Both blocked — backing up', 'active');
+          }
+        }
+      }
+
       const cmdLabel = {F:'Moving forward',B:'Moving back',L:'Turning left',R:'Turning right'};
-      setStatus('🤖 ' + (cmdLabel[data.cmd] || data.cmd), 'active');
+      setStatus('🤖 ' + (cmdLabel[finalCmd] || finalCmd), 'active');
       setDuration(duration);
 
-      // Execute move for dynamic duration then auto-stop
-      sendCmd(data.cmd);
+      sendCmd(finalCmd);
       setTimeout(() => {
         sendCmd('S');
         setMotor('S');
